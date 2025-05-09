@@ -1,0 +1,250 @@
+/* Tesla AutoPilot Panel CSS */
+
+/* Panel container */
+#tesla-autopilot-panel {
+  position: fixed;
+  top: 64px;
+  right: 0;
+  width: 340px;
+  max-height: 80vh;
+  overflow: auto;
+  background: rgba(30, 30, 30, 0.8);
+  backdrop-filter: blur(8px);
+  padding: 16px;
+  border-radius: 8px 0 0 8px;
+  color: #fff;
+  z-index: 9999;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Header and close button */
+#tesla-autopilot-panel .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+#tesla-autopilot-panel h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+#tesla-autopilot-panel h3 {
+  font-size: 16px;
+  margin: 16px 0 8px 0;
+  font-weight: 500;
+}
+
+#tesla-autopilot-panel .btn-ghost {
+  background: none;
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  cursor: pointer;
+}
+
+/* Form groups and inputs */
+#tesla-autopilot-panel .form-group {
+  margin-bottom: 12px;
+}
+
+#tesla-autopilot-panel .form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+#tesla-autopilot-panel .form-group input,
+#tesla-autopilot-panel .form-group select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background-color: #333;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+/* Buttons */
+#tesla-autopilot-panel .btn {
+  background: #3b82f6;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #fff;
+  margin: 4px 0;
+  cursor: pointer;
+  width: 100%;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+#tesla-autopilot-panel .btn:hover {
+  background: #2563eb;
+}
+
+/* Tabs */
+#tesla-autopilot-panel .tabs {
+  display: flex;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #444;
+}
+
+#tesla-autopilot-panel .tab {
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+#tesla-autopilot-panel .tab:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+#tesla-autopilot-panel .tab.active {
+  border-bottom: 2px solid #3b82f6;
+  color: #3b82f6;
+}
+
+/* Tab contents */
+#tesla-autopilot-panel .tab-content {
+  display: none;
+}
+
+#tesla-autopilot-panel .tab-content.active {
+  display: block;
+}
+
+/* Car list */
+#tesla-autopilot-panel .car-list {
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+#tesla-autopilot-panel .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  background-color: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#tesla-autopilot-panel a.row {
+  text-decoration: none;
+  color: inherit;
+}
+
+#tesla-autopilot-panel .row:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Status message */
+#tesla-autopilot-panel .status {
+  padding: 8px;
+  border-radius: 4px;
+  margin-top: 8px;
+  text-align: center;
+  font-size: 14px;
+  display: none;
+}
+
+#tesla-autopilot-panel .status.success {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+#tesla-autopilot-panel .status.error {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* Scrollbar */
+#tesla-autopilot-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+#tesla-autopilot-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+#tesla-autopilot-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+#tesla-autopilot-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Light mode */
+@media (prefers-color-scheme: light) {
+  #tesla-autopilot-panel {
+    background: rgba(255, 255, 255, 0.9);
+    color: #000;
+  }
+  
+  #tesla-autopilot-panel .btn-ghost {
+    color: #000;
+  }
+  
+  #tesla-autopilot-panel .form-group input,
+  #tesla-autopilot-panel .form-group select {
+    background-color: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #000;
+  }
+  
+  #tesla-autopilot-panel .tabs {
+    border-bottom: 1px solid #ddd;
+  }
+  
+  #tesla-autopilot-panel .row {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  
+  #tesla-autopilot-panel .row:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+  
+  #tesla-autopilot-panel::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  
+  #tesla-autopilot-panel::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+  }
+  
+  #tesla-autopilot-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Turkish-specific styles */
+html[lang="tr"] #tesla-autopilot-panel .form-group label[for="price-floor"]:after {
+  content: " (₺)";
+}
+
+html[lang="en"] #tesla-autopilot-panel .form-group label[for="price-floor"]:after {
+  content: " ($)";
+}
+
+/* Region-specific visibility */
+html[lang="tr"] #tesla-autopilot-panel .tc-field {
+  display: block;
+}
+
+html[lang="en"] #tesla-autopilot-panel .tc-field {
+  display: none;
+}

@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+      font-family: system-ui, -apple-system, Arial, sans-serif;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    input, select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+    
+    .section {
+      margin-top: 20px;
+      border-top: 1px solid #eee;
+      padding-top: 20px;
+    }
+    
+    button {
+      background: #3b82f6;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    button:hover {
+      background: #2563eb;
+    }
+    
+    .save-status {
+      display: none;
+      padding: 10px;
+      color: green;
+      background: #f0fff4;
+      border-radius: 4px;
+      margin-top: 15px;
+    }
+    
+    .region-selector {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    
+    .region-selector h2 {
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tesla AutoPilot Settings</h1>
+  
+  <div class="region-selector">
+    <h2>Select Region</h2>
+    <select id="region">
+      <option value="US">United States (English)</option>
+      <option value="TR">Turkey (Turkish)</option>
+    </select>
+  </div>
+  
+  <div id="price-settings" class="form-group">
+    <label for="priceFloor" id="price-label">Price Threshold ($):</label>
+    <input id="priceFloor" type="number">
+  </div>
+  
+  <div class="form-group">
+    <label for="zip" id="zip-label">ZIP Code:</label>
+    <input id="zip" type="text">
+  </div>
+  
+  <div class="section">
+    <h2 id="account-details-heading">Account Details</h2>
+    
+    <div class="form-group tc-field">
+      <label for="tc">TCKN:</label>
+      <input id="tc" type="text" placeholder="Turkish ID Number">
+    </div>
+    
+    <div class="form-group">
+      <label for="first" id="first-name-label">First Name:</label>
+      <input id="first" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="last" id="last-name-label">Last Name:</label>
+      <input id="last" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="email" id="email-label">Email:</label>
+      <input id="email" type="email">
+    </div>
+    
+    <div class="form-group">
+      <label for="phone" id="phone-label">Phone:</label>
+      <input id="phone" type="text">
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2 id="billing-address-heading">Billing Address</h2>
+    
+    <div class="form-group">
+      <label for="country" id="country-label">Country Code:</label>
+      <input id="country" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="addr1" id="addr1-label">Address Line 1:</label>
+      <input id="addr1" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="addr2" id="addr2-label">Address Line 2 (Optional):</label>
+      <input id="addr2" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="city" id="city-label">City:</label>
+      <input id="city" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="state" id="state-label">State:</label>
+      <input id="state" type="text">
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2 id="payment-heading">Payment Information (Optional)</h2>
+    <p><em id="payment-note">Note: This information is stored locally on your device only.</em></p>
+    
+    <div class="form-group">
+      <label for="cardName" id="card-name-label">Name on Card:</label>
+      <input id="cardName" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="cardNumber" id="card-number-label">Card Number:</label>
+      <input id="cardNumber" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="cardExp" id="card-exp-label">Expiration Date:</label>
+      <input id="cardExp" type="text">
+    </div>
+    
+    <div class="form-group">
+      <label for="cardCVV" id="card-cvv-label">CVV:</label>
+      <input id="cardCVV" type="text">
+    </div>
+  </div>
+  
+  <button id="save">Save Settings</button>
+  
+  <div id="saveStatus" class="save-status">Your settings have been saved successfully! ✅</div>
+  
+  <script src="options.js"></script>
+</body>
+</html>
