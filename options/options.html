@@ -71,13 +71,35 @@
       margin-bottom: 10px;
     }
     
+    .checkbox-option {
+      margin-bottom: 8px;
+    }
+    
+    .checkbox-option input[type="checkbox"] {
+      margin-right: 8px;
+      width: auto;
+    }
+    
+    .checkbox-container {
+      margin-top: 10px;
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
     @media (prefers-color-scheme: dark) {
       body {
         background-color: #1f2937;
         color: #f9fafb;
       }
       
-      .region-selector {
+      .region-selector, .checkbox-container {
         background-color: #374151;
       }
       
@@ -105,14 +127,53 @@
     </select>
   </div>
   
-  <div id="price-settings" class="form-group">
-    <label for="priceFloor" id="price-label">Price Threshold ($):</label>
-    <input id="priceFloor" type="number">
-  </div>
-  
-  <div class="form-group">
-    <label for="zip" id="zip-label">ZIP Code:</label>
-    <input id="zip" type="text">
+  <!-- Tesla inventory search settings - script.py features -->
+  <div class="section">
+    <h2>Inventory Search Settings</h2>
+    
+    <div class="form-group">
+      <label for="model">Tesla Model:</label>
+      <select id="model">
+        <option value="m3">Model 3</option>
+        <option value="my" selected>Model Y</option>
+        <option value="ms">Model S</option>
+        <option value="mx">Model X</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="condition">Condition:</label>
+      <select id="condition">
+        <option value="new" selected>New</option>
+        <option value="used">Used</option>
+      </select>
+    </div>
+    
+    <div id="price-settings" class="form-group">
+      <label for="priceFloor" id="price-label">Price Threshold ($):</label>
+      <input id="priceFloor" type="number">
+    </div>
+    
+    <div class="form-group">
+      <label for="zip" id="zip-label">ZIP Code:</label>
+      <input id="zip" type="text">
+    </div>
+    
+    <!-- Trim levels (from script.py) -->
+    <div class="form-group">
+      <label>Trim Levels:</label>
+      <div id="trim-levels-container" class="checkbox-container">
+        <!-- Trim options will be dynamically inserted here -->
+      </div>
+    </div>
+    
+    <!-- Autopilot options (from script.py) -->
+    <div class="form-group">
+      <label>Autopilot Options:</label>
+      <div id="autopilot-container" class="checkbox-container">
+        <!-- Autopilot options will be dynamically inserted here -->
+      </div>
+    </div>
   </div>
   
   <div class="section">
@@ -198,7 +259,10 @@
     </div>
   </div>
   
-  <button id="save">Save Settings</button>
+  <div class="button-group">
+    <button id="save">Save Settings</button>
+    <button id="export-csv">Export to CSV</button>
+  </div>
   
   <div id="saveStatus" class="save-status">Your settings have been saved successfully! ✅</div>
   

@@ -1,11 +1,11 @@
-// Fixed options.js file for Tesla AutoPilot
-// Replace your entire options/options.js file with this code
+// Enhanced options.js file for Tesla AutoPilot
+// Updated to support script.py functionality
 
 // Default values for regions
 const DEFAULT_VALUES = {
   US: {
     priceFloor: "45000",
-    zip: "94401",
+    zip: "98052", // Updated to match script.py (Redmond, WA)
     first: "John",
     last: "Smith",
     email: "your.email@example.com",
@@ -18,7 +18,10 @@ const DEFAULT_VALUES = {
     cardName: "John Smith",
     cardNumber: "4111111111111111",
     cardExp: "12/27",
-    cardCVV: "123"
+    cardCVV: "123",
+    condition: "new",
+    autopilot: ["AUTOPILOT_FULL_SELF_DRIVING"], // Default to FSD like script.py
+    trimLevels: ["LRRWD", "LRAWD"] // Match script.py defaults
   },
   TR: {
     priceFloor: "1590000",
@@ -36,9 +39,55 @@ const DEFAULT_VALUES = {
     cardName: "John Smith",
     cardNumber: "4111111111111111",
     cardExp: "12/27",
-    cardCVV: "123"
+    cardCVV: "123",
+    condition: "new",
+    autopilot: ["AUTOPILOT_FULL_SELF_DRIVING"],
+    trimLevels: ["LRRWD", "LRAWD"]
   }
 };
+
+// Model configurations 
+const MODELS = {
+  m3: {
+    displayName: "Model 3",
+    trims: [
+      { value: "MRRWD", label: "Model 3 RWD" },
+      { value: "LRRWD", label: "Model 3 Long Range RWD" },
+      { value: "LRAWD", label: "Model 3 Long Range AWD" },
+      { value: "PERFORMANCE", label: "Model 3 Performance" }
+    ]
+  },
+  my: {
+    displayName: "Model Y",
+    trims: [
+      { value: "MRRWD", label: "Model Y RWD" },
+      { value: "LRRWD", label: "Model Y Long Range RWD" },
+      { value: "LRAWD", label: "Model Y Long Range AWD" },
+      { value: "PERFORMANCE", label: "Model Y Performance" }
+    ]
+  },
+  ms: {
+    displayName: "Model S",
+    trims: [
+      { value: "LRAWD", label: "Model S Long Range" },
+      { value: "PLAID", label: "Model S Plaid" }
+    ]
+  },
+  mx: {
+    displayName: "Model X",
+    trims: [
+      { value: "LRAWD", label: "Model X Long Range" },
+      { value: "PLAID", label: "Model X Plaid" }
+    ]
+  }
+};
+
+// Autopilot options
+const AUTOPILOT_OPTIONS = [
+  { value: "AUTOPILOT_FULL_SELF_DRIVING", label: "Full Self-Driving" },
+  { value: "AUTOPILOT_ENHANCED", label: "Enhanced Autopilot" },
+  { value: "AUTOPILOT_STANDARD", label: "Autopilot" }
+];
 
 // Helper functions
 function $(id) {
@@ -71,6 +120,17 @@ async function getRegion() {
   }
 }
 
+// Get current model
+async function getModel() {
+  try {
+    const { model = "my" } = await chrome.storage.sync.get("model");
+    return model;
+  } catch (error) {
+    console.error("Error getting model:", error);
+    return "my";
+  }
+}
+
 // Update UI for region
 async function updateUIForRegion(region) {
   // Update region selector
@@ -84,6 +144,77 @@ async function updateUIForRegion(region) {
     $("price-label").textContent = "Price Threshold ($):";
     $('.tc-field').style.display = "none";
   }
+  
+  // Get current model
+  const model = await getModel();
+  
+  // Update trim levels for the model
+  updateTrimOptions(model);
+}
+
+// Update trim options based on selected model
+function updateTrimOptions(modelCode) {
+  const trimContainer = $("trim-levels-container");
+  if (!trimContainer) return;
+  
+  // Clear existing options
+  trimContainer.innerHTML = "";
+  
+  // Get trims for the model
+  const trims = MODELS[modelCode]?.trims || [];
+  
+  // Add checkboxes for each trim
+  trims.forEach(trim => {
+    const checkboxId = `trim-${trim.value}`;
+    
+    const checkboxDiv = document.createElement("div");
+    checkboxDiv.className = "checkbox-option";
+    
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = checkboxId;
+    checkbox.value = trim.value;
+    checkbox.className = "trim-checkbox";
+    
+    const label = document.createElement("label");
+    label.htmlFor = checkboxId;
+    label.textContent = trim.label;
+    
+    checkboxDiv.appendChild(checkbox);
+    checkboxDiv.appendChild(label);
+    trimContainer.appendChild(checkboxDiv);
+  });
+}
+
+// Update autopilot options
+function updateAutopilotOptions() {
+  const autopilotContainer = $("autopilot-container");
+  if (!autopilotContainer) return;
+  
+  // Clear existing options
+  autopilotContainer.innerHTML = "";
+  
+  // Add checkboxes for each autopilot option
+  AUTOPILOT_OPTIONS.forEach(option => {
+    const checkboxId = `autopilot-${option.value}`;
+    
+    const checkboxDiv = document.createElement("div");
+    checkboxDiv.className = "checkbox-option";
+    
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = checkboxId;
+    checkbox.value = option.value;
+    checkbox.className = "autopilot-checkbox";
+    
+    const label = document.createElement("label");
+    label.htmlFor = checkboxId;
+    label.textContent = option.label;
+    
+    checkboxDiv.appendChild(checkbox);
+    checkboxDiv.appendChild(label);
+    autopilotContainer.appendChild(checkboxDiv);
+  });
 }
 
 // Load all values from storage
@@ -119,6 +250,34 @@ async function loadValues() {
         console.log(`Set field ${fieldId} to value:`, value);
       }
     });
+    
+    // Handle model selection
+    if ($("model")) {
+      $("model").value = data.model || "my";
+    }
+    
+    // Handle condition selection
+    if ($("condition")) {
+      $("condition").value = data.condition || "new";
+    }
+    
+    // Update trim options
+    updateTrimOptions(data.model || "my");
+    
+    // Check appropriate trim checkboxes
+    const savedTrimLevels = data.trimLevels || defaults.trimLevels || [];
+    document.querySelectorAll(".trim-checkbox").forEach(checkbox => {
+      checkbox.checked = savedTrimLevels.includes(checkbox.value);
+    });
+    
+    // Update autopilot options
+    updateAutopilotOptions();
+    
+    // Check appropriate autopilot checkboxes
+    const savedAutopilot = data.autopilot || defaults.autopilot || [];
+    document.querySelectorAll(".autopilot-checkbox").forEach(checkbox => {
+      checkbox.checked = savedAutopilot.includes(checkbox.value);
+    });
   } catch (error) {
     console.error("Error loading values:", error);
     showStatus("Error loading settings", false);
@@ -128,7 +287,7 @@ async function loadValues() {
 // Save all values to storage
 async function saveValues() {
   try {
-    // Get all field IDs
+    // Get all basic field IDs
     const fields = [
       "priceFloor", "zip", "tc", "first", "last", "email", "phone",
       "country", "addr1", "addr2", "city", "state",
@@ -140,12 +299,37 @@ async function saveValues() {
       region: $("region").value
     };
     
+    // Save basic fields
     fields.forEach(fieldId => {
       const field = $(fieldId);
       if (field) {
         data[fieldId] = field.value.trim();
       }
     });
+    
+    // Save model if it exists
+    if ($("model")) {
+      data.model = $("model").value;
+    }
+    
+    // Save condition if it exists
+    if ($("condition")) {
+      data.condition = $("condition").value;
+    }
+    
+    // Save trim levels
+    const trimLevels = [];
+    document.querySelectorAll(".trim-checkbox:checked").forEach(checkbox => {
+      trimLevels.push(checkbox.value);
+    });
+    data.trimLevels = trimLevels;
+    
+    // Save autopilot options
+    const autopilot = [];
+    document.querySelectorAll(".autopilot-checkbox:checked").forEach(checkbox => {
+      autopilot.push(checkbox.value);
+    });
+    data.autopilot = autopilot;
     
     console.log("Saving data to storage:", data);
     
@@ -198,6 +382,19 @@ function addDebugSection() {
       }
     });
     
+    // Handle checkboxes
+    const trimLevels = [];
+    document.querySelectorAll(".trim-checkbox:checked").forEach(checkbox => {
+      trimLevels.push(checkbox.value);
+    });
+    data.trimLevels = trimLevels;
+    
+    const autopilot = [];
+    document.querySelectorAll(".autopilot-checkbox:checked").forEach(checkbox => {
+      autopilot.push(checkbox.value);
+    });
+    data.autopilot = autopilot;
+    
     // Add default initialized flag
     data.defaultsInitialized = true;
     
@@ -226,6 +423,17 @@ function addDebugSection() {
   });
 }
 
+// Export data to CSV
+function exportToCSV() {
+  chrome.runtime.sendMessage({ action: "downloadCSV" }, response => {
+    if (response && response.success) {
+      showStatus("CSV exported successfully!");
+    } else {
+      showStatus("Error exporting CSV", false);
+    }
+  });
+}
+
 // Initialize page
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Options page loaded");
@@ -240,6 +448,18 @@ document.addEventListener("DOMContentLoaded", () => {
   $("region").addEventListener("change", () => {
     loadValues();
   });
+  
+  // Set up model change handler
+  if ($("model")) {
+    $("model").addEventListener("change", (e) => {
+      updateTrimOptions(e.target.value);
+    });
+  }
+  
+  // Set up export button if it exists
+  if ($("export-csv")) {
+    $("export-csv").addEventListener("click", exportToCSV);
+  }
   
   // Add the debug section
   addDebugSection();
