@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tesla AutoPilot",
   "description": "Track Tesla inventory under your price target and auto-fill the checkout form. Supports US and Turkish regions.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -43,7 +43,7 @@
   "options_page": "options/options.html",
   "web_accessible_resources": [
     {
-      "resources": ["style.css"],
+      "resources": ["style.css", "content/inject.js"],
       "matches": ["https://www.tesla.com/*"]
     }
   ]

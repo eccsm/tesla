@@ -107,43 +107,266 @@ const Helpers = {
   }
 };
 
-// Form Handler
+// Complete Tesla Order Form Handler
 const FormHandler = {
   /**
-   * Get a field element by various selectors
+   * Enhanced field selector that targets all Tesla checkout fields
    * @param {string} fieldName - Field identifier
    * @returns {HTMLElement|null} Field element if found
    */
   getField(fieldName) {
-    // Common field selectors
-    const selectors = {
-      // Personal info
-      tc: 'input[placeholder*="TCKN"], input[name*="tin"]',
-      first: 'input[placeholder*="First"], input[name*="firstName"]',
-      last: 'input[placeholder*="Last"], input[name*="lastName"]',
-      email: 'input[type="email"], input[placeholder*="Email"]',
-      phone: 'input[type="tel"], input[placeholder*="Phone"]',
+    // Tesla-specific selectors based on the screenshots
+    const teslaSelectors = {
+      // Account Details
+      first: [
+        'input[aria-label="First Name"]',
+        'input[placeholder="First Name"]',
+        'input[name="firstName"]',
+        'div:contains("First Name") input'
+      ],
+      last: [
+        'input[aria-label="Last Name"]',
+        'input[placeholder="Last Name"]',
+        'input[name="lastName"]',
+        'div:contains("Last Name") input'
+      ],
+      email: [
+        'input[aria-label="Email Address"]',
+        'input[placeholder="Email Address"]',
+        'input[name="email"]',
+        'input[type="email"]',
+        'div:contains("Email Address") input'
+      ],
+      emailConfirm: [
+        'input[aria-label="Confirm Email Address"]',
+        'input[placeholder="Confirm Email Address"]',
+        'input[name="confirmEmail"]',
+        'div:contains("Confirm Email") input'
+      ],
+      phone: [
+        'input[aria-label="Mobile Phone Number"]',
+        'input[placeholder="Mobile Phone Number"]',
+        'input[type="tel"]',
+        'div:contains("Mobile Phone") input'
+      ],
       
-      // Address
-      addr1: 'input[placeholder*="Address"], input[name*="address1"]',
-      addr2: 'input[placeholder*="Apt"], input[name*="address2"]',
-      city: 'input[placeholder*="City"], input[name*="city"]',
-      state: 'input[placeholder*="State"], select[name*="state"]',
-      zip: 'input[placeholder*="ZIP"], input[name*="zip"]',
+      // Shipping Address
+      addr1: [
+        'input[aria-label="Address"]',
+        'input[placeholder="Address"]',
+        'input[name="address1"]',
+        'div:contains("Address") input',
+        'div:contains("shipping address") input'
+      ],
+      addr2: [
+        'input[aria-label="Apartment, Suite, etc (optional)"]',
+        'input[placeholder="Apartment, Suite, etc (optional)"]',
+        'input[name="address2"]',
+        'div:contains("Apartment") input',
+        'div:contains("Suite") input'
+      ],
       
-      // Payment
-      cardName: 'input[placeholder*="Name on Card"]',
-      cardNumber: 'input[placeholder*="Card Number"]',
-      cardExp: 'input[placeholder*="Expiration"]',
-      cardCVV: 'input[placeholder*="CVV"]'
+      // Payment Information
+      cardName: [
+        'input[aria-label="Name on Card"]',
+        'input[placeholder="Name on Card"]',
+        'div:contains("Name on Card") input'
+      ],
+      cardNumber: [
+        'input[aria-label="Card Number"]',
+        'input[placeholder="Card Number"]',
+        'div:contains("Card Number") input'
+      ],
+      cardExpMonth: [
+        'select[aria-label="Expiration Month"]',
+        'select[name="expMonth"]',
+        'div:contains("Expiration Month") select'
+      ],
+      cardExpYear: [
+        'select[aria-label="Expiration Year"]',
+        'select[name="expYear"]',
+        'div:contains("Expiration Year") select'
+      ],
+      cardCVV: [
+        'input[aria-label="Security Code"]',
+        'input[placeholder="Security Code"]',
+        'div:contains("Security Code") input'
+      ],
+      zip: [
+        'input[aria-label="Billing ZIP Code"]',
+        'input[placeholder="Billing ZIP Code"]',
+        'div:contains("Billing ZIP") input'
+      ]
     };
     
-    const selector = selectors[fieldName];
-    return selector ? document.querySelector(selector) : null;
+    // Try the Tesla-specific selectors first
+    if (teslaSelectors[fieldName]) {
+      for (const selector of teslaSelectors[fieldName]) {
+        try {
+          // Handle :contains pseudo-selector
+          if (selector.includes(':contains(')) {
+            // Extract the element type and text to match
+            const match = selector.match(/([\w-]+):contains\("([^"]+)"\)(.*)/);
+            if (match) {
+              const [_, elementType, textToMatch, remainingSelector] = match;
+              
+              // Find all elements of this type
+              const elements = document.querySelectorAll(elementType);
+              
+              // Find elements containing the text
+              for (const element of elements) {
+                if (element.textContent.includes(textToMatch)) {
+                  // Found a match - handle remaining selector
+                  if (remainingSelector.includes('input')) {
+                    // Find input field
+                    const inputs = element.querySelectorAll('input');
+                    if (inputs.length > 0) {
+                      return inputs[0]; // Return the first input
+                    }
+                  } else if (remainingSelector.includes('select')) {
+                    // Find select field
+                    const selects = element.querySelectorAll('select');
+                    if (selects.length > 0) {
+                      return selects[0]; // Return the first select
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            // Standard selector
+            const element = document.querySelector(selector);
+            if (element) return element;
+          }
+        } catch (err) {
+          console.warn(`Error with selector "${selector}":`, err);
+        }
+      }
+    }
+    
+    // If the specific selectors failed, use a more thorough approach
+    return this.findFieldByLabels(fieldName);
   },
   
   /**
-   * Fill a form field safely
+   * Find a field by looking at nearby labels and text
+   * @param {string} fieldName - Field to find
+   * @returns {HTMLElement|null} - Field element if found
+   */
+  findFieldByLabels(fieldName) {
+    // Labels to look for each field type
+    const fieldLabels = {
+      first: ['First Name', 'First'],
+      last: ['Last Name', 'Last'],
+      email: ['Email Address', 'Email'],
+      emailConfirm: ['Confirm Email Address', 'Confirm Email'],
+      phone: ['Mobile Phone Number', 'Phone Number', 'Phone'],
+      addr1: ['Address', 'Street Address', 'Enter shipping address'],
+      addr2: ['Apartment', 'Suite', 'Apt', 'Unit'],
+      cardName: ['Name on Card'],
+      cardNumber: ['Card Number'],
+      cardExpMonth: ['Expiration Month'],
+      cardExpYear: ['Expiration Year'],
+      cardCVV: ['Security Code', 'CVV', 'CVC'],
+      zip: ['Billing ZIP Code', 'ZIP Code', 'Postal Code']
+    };
+    
+    const labelsToFind = fieldLabels[fieldName] || [];
+    if (labelsToFind.length === 0) return null;
+    
+    // Find all visible elements containing these labels
+    const allElements = document.querySelectorAll('*');
+    const matchingElements = [];
+    
+    for (const element of allElements) {
+      // Skip non-visible elements
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+      
+      // Skip script and style elements
+      if (element.tagName === 'SCRIPT' || element.tagName === 'STYLE') continue;
+      
+      // Check if element contains the label text
+      const text = element.textContent.trim();
+      if (text && labelsToFind.some(label => text.includes(label))) {
+        matchingElements.push(element);
+      }
+    }
+    
+    // For each matching element, look for input/select field
+    for (const element of matchingElements) {
+      // 1. Check for inputs directly inside
+      const inputs = element.querySelectorAll('input, select');
+      if (inputs.length > 0) return inputs[0];
+      
+      // 2. Check the next element
+      let nextElement = element.nextElementSibling;
+      while (nextElement) {
+        const inputs = nextElement.querySelectorAll('input, select');
+        if (inputs.length > 0) return inputs[0];
+        nextElement = nextElement.nextElementSibling;
+      }
+      
+      // 3. Check the parent's next children
+      const parent = element.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children);
+        const currentIndex = siblings.indexOf(element);
+        
+        for (let i = currentIndex + 1; i < siblings.length; i++) {
+          const inputs = siblings[i].querySelectorAll('input, select');
+          if (inputs.length > 0) return inputs[0];
+        }
+      }
+    }
+    
+    // If all else fails, try some field-specific strategies
+    switch (fieldName) {
+      case 'first':
+        // First name is often the first text input on the form
+        return document.querySelector('input[type="text"]');
+        
+      case 'cardExpMonth':
+        // First select element after "Expiration" text
+        const monthLabels = document.querySelectorAll('div:contains("Expiration"), span:contains("Expiration")');
+        for (const label of monthLabels) {
+          const selects = document.querySelectorAll('select');
+          // First select after the expiration label
+          for (const select of selects) {
+            if (select.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_PRECEDING) {
+              return select;
+            }
+          }
+        }
+        // First select on the page as fallback
+        return document.querySelector('select');
+        
+      case 'cardExpYear':
+        // Second select element after "Expiration" text
+        const yearLabels = document.querySelectorAll('div:contains("Expiration"), span:contains("Expiration")');
+        for (const label of yearLabels) {
+          const selects = document.querySelectorAll('select');
+          // First select after the expiration label
+          let found = false;
+          for (const select of selects) {
+            if (select.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_PRECEDING) {
+              if (found) return select; // Return the second select
+              found = true;
+            }
+          }
+        }
+        // Second select on the page as fallback
+        const selects = document.querySelectorAll('select');
+        if (selects.length > 1) return selects[1];
+        break;
+    }
+    
+    console.warn(`Could not find field: ${fieldName}`);
+    return null;
+  },
+  
+  /**
+   * Fill a form field safely with enhanced event triggering
    * @param {HTMLElement} field - Field element
    * @param {string} value - Value to set
    * @returns {boolean} Success status
@@ -152,66 +375,398 @@ const FormHandler = {
     if (!field || !value) return false;
     
     try {
-      // Set the value
-      field.value = value;
+      // Focus the field first
+      field.focus();
       
-      // Dispatch basic events
-      try {
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-        field.dispatchEvent(new Event('change', { bubbles: true }));
-      } catch (e) {
-        // Ignore event errors
+      // For select elements, handle differently
+      if (field.tagName === 'SELECT') {
+        return this.fillSelectField(field, value);
       }
       
+      // For input fields, set value and trigger events
+      field.value = '';  // Clear first
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      
+      // Type the value character by character to better simulate user typing
+      for (let i = 0; i < value.length; i++) {
+        field.value += value.charAt(i);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      // Trigger final events
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      field.dispatchEvent(new Event('blur', { bubbles: true }));
+      
+      console.log(`Successfully filled field:`, field);
       return true;
     } catch (e) {
-      console.log(`Error filling field:`, e);
+      console.error(`Error filling field:`, e);
       return false;
     }
   },
   
   /**
-   * Fill form with user data
-   * @returns {Promise<number>} Number of fields filled
+   * Fill a select dropdown field
+   * @param {HTMLSelectElement} field - Select element 
+   * @param {string} value - Value to select
+   * @returns {boolean} Success status
+   */
+  fillSelectField(field, value) {
+    try {
+      const options = Array.from(field.options);
+      let match = null;
+      
+      // Try different strategies to find the matching option
+      
+      // 1. Exact value match
+      match = options.find(opt => opt.value === value);
+      if (match) {
+        field.value = match.value;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+      
+      // 2. Exact text match
+      match = options.find(opt => opt.text === value);
+      if (match) {
+        field.value = match.value;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+      
+      // 3. Case-insensitive text partial match
+      match = options.find(opt => 
+        opt.text.toLowerCase().includes(value.toLowerCase())
+      );
+      if (match) {
+        field.value = match.value;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+      
+      // 4. Numeric match (for expiration dates)
+      const numValue = parseInt(value, 10);
+      if (!isNaN(numValue)) {
+        // Try to match by number value
+        match = options.find(opt => {
+          const optNum = parseInt(opt.value, 10);
+          return !isNaN(optNum) && optNum === numValue;
+        });
+        
+        if (!match) {
+          // Try to match by text as number
+          match = options.find(opt => {
+            const optNum = parseInt(opt.text, 10);
+            return !isNaN(optNum) && optNum === numValue;
+          });
+        }
+        
+        if (match) {
+          field.value = match.value;
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+      }
+      
+      // 5. Handle MM/YY format for expiration dates
+      if (value.includes('/')) {
+        const parts = value.split('/');
+        if (field.id.toLowerCase().includes('month') || field.name.toLowerCase().includes('month')) {
+          // Get month part
+          const month = parseInt(parts[0], 10);
+          if (!isNaN(month)) {
+            match = options.find(opt => {
+              const optNum = parseInt(opt.value, 10);
+              return !isNaN(optNum) && optNum === month;
+            });
+            
+            if (match) {
+              field.value = match.value;
+              field.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+          }
+        } else if (field.id.toLowerCase().includes('year') || field.name.toLowerCase().includes('year')) {
+          // Get year part
+          let year = parseInt(parts[1], 10);
+          if (!isNaN(year)) {
+            // Convert 2-digit year to 4-digit
+            if (year < 100) year += 2000;
+            
+            match = options.find(opt => {
+              const optNum = parseInt(opt.value, 10);
+              return !isNaN(optNum) && optNum === year;
+            });
+            
+            if (match) {
+              field.value = match.value;
+              field.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+          }
+        }
+      }
+      
+      // 6. Specific handling for expiration fields
+      if (field.id.toLowerCase().includes('month') || field.name.toLowerCase().includes('month')) {
+        // Try to find any valid month
+        for (let month = 1; month <= 12; month++) {
+          match = options.find(opt => {
+            // Try both numeric value and text
+            return opt.value == month || opt.text.includes(month.toString());
+          });
+          
+          if (match) {
+            field.value = match.value;
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+        }
+      } else if (field.id.toLowerCase().includes('year') || field.name.toLowerCase().includes('year')) {
+        // Find current year or next available
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear; year <= currentYear + 10; year++) {
+          match = options.find(opt => 
+            opt.value == year || opt.text.includes(year.toString())
+          );
+          
+          if (match) {
+            field.value = match.value;
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+        }
+      }
+      
+      // 7. Last resort - select first non-empty option
+      match = options.find(opt => opt.value && !opt.disabled);
+      if (match) {
+        field.value = match.value;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log(`Selected first available option: ${match.text}`);
+        return true;
+      }
+      
+      console.warn(`Could not find a suitable option for value: ${value}`);
+      return false;
+    } catch (e) {
+      console.error(`Error filling select field:`, e);
+      return false;
+    }
+  },
+  
+  /**
+   * Parse expiration date string into separate month and year
+   * @param {string} expDateValue - Expiration date string (MM/YY, MM/YYYY, etc.)
+   * @returns {Object} Object with month and year properties
+   */
+  parseExpirationDate(expDateValue) {
+    // Default values
+    let month = '';
+    let year = '';
+    
+    // Check if we have a valid format
+    if (expDateValue && typeof expDateValue === 'string') {
+      // Common formats: MM/YY, MM/YYYY, MM-YY
+      const formats = [
+        /^(\d{1,2})[\/\-](\d{2,4})$/, // MM/YY, MM/YYYY, MM-YY, MM-YYYY
+        /^(\d{1,2})(\d{2})$/ // MMYY
+      ];
+      
+      // Try each format
+      for (const format of formats) {
+        const match = expDateValue.match(format);
+        if (match) {
+          month = match[1].padStart(2, '0'); // Ensure 2-digit month
+          year = match[2];
+          break;
+        }
+      }
+    }
+    
+    return { month, year };
+  },
+  
+  /**
+   * Fill form with user data - enhanced for Tesla's order form
+   * @returns {Promise<{count: number, fields: string[]}>} Details of filled fields
    */
   async fillForm() {
     let filledCount = 0;
+    const filledFields = [];
     
     try {
       // Get user data
-      const userData = await Helpers.getUserSettings();
+      const userData = await new Promise(resolve => {
+        chrome.storage.sync.get(null, data => {
+          resolve(data || {});
+        });
+      });
       
-      // Fields to fill
-      const fieldNames = [
-        'tc', 'first', 'last', 'email', 'phone',
-        'addr1', 'addr2', 'city', 'state', 'zip',
-        'cardName', 'cardNumber', 'cardExp', 'cardCVV'
-      ];
+      console.log('Retrieved user data for form filling:', Object.keys(userData));
       
-      // Try to fill each field
-      fieldNames.forEach(fieldName => {
-        if (userData[fieldName]) {
-          const field = this.getField(fieldName);
-          if (field && this.fillField(field, userData[fieldName])) {
+      // Define field mapping - use emailConfirm for confirmation fields
+      const fieldMapping = {
+        // Account details
+        'first': 'first',
+        'last': 'last',
+        'email': 'email',
+        'emailConfirm': 'email', // Use same email for confirmation
+        'phone': 'phone',
+        
+        // Address
+        'addr1': 'addr1',
+        'addr2': 'addr2',
+        
+        // Payment
+        'cardName': 'cardName',
+        'cardNumber': 'cardNumber',
+        'cardCVV': 'cardCVV',
+        'zip': 'zip'
+      };
+      
+      // Fill each field with a delay between them
+      for (const [fieldId, dataKey] of Object.entries(fieldMapping)) {
+        if (userData[dataKey]) {
+          const field = this.getField(fieldId);
+          if (field && this.fillField(field, userData[dataKey])) {
             filledCount++;
+            filledFields.push(fieldId);
+            
+            // Add delay between fields (200-300ms)
+            await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
           }
         }
-      });
+      }
       
-      // Check any checkboxes (terms, agreements)
-      document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-        if (!checkbox.checked) {
+      // Special handling for expiration date (might be one field or two separate fields)
+      if (userData.cardExp) {
+        const { month, year } = this.parseExpirationDate(userData.cardExp);
+        
+        // Try to fill month field
+        if (month) {
+          const monthField = this.getField('cardExpMonth');
+          if (monthField && this.fillField(monthField, month)) {
+            filledCount++;
+            filledFields.push('cardExpMonth');
+            await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
+          }
+        }
+        
+        // Try to fill year field
+        if (year) {
+          const yearField = this.getField('cardExpYear');
+          if (yearField && this.fillField(yearField, year)) {
+            filledCount++;
+            filledFields.push('cardExpYear');
+            await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
+          }
+        }
+      }
+      
+      // Check agreement checkboxes
+      const checkedCount = this.checkRelevantCheckboxes();
+      if (checkedCount > 0) {
+        filledCount += checkedCount;
+        filledFields.push('checkboxes');
+      }
+      
+      console.log(`Form filling complete. Filled ${filledCount} fields:`, filledFields.join(', '));
+      
+      return {
+        count: filledCount,
+        fields: filledFields
+      };
+    } catch (e) {
+      console.error('Error filling form:', e);
+      return {
+        count: filledCount,
+        fields: filledFields,
+        error: e.message
+      };
+    }
+  },
+  
+  /**
+   * Check relevant agreement checkboxes
+   * @returns {number} Number of checkboxes checked
+   */
+  checkRelevantCheckboxes() {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+    let checkedCount = 0;
+    
+    checkboxes.forEach(checkbox => {
+      // Only check boxes that are likely agreement checkboxes
+      // Don't check boxes that seem like product options
+      if (this.isLikelyAgreementCheckbox(checkbox) && !checkbox.checked) {
+        try {
           checkbox.checked = true;
           checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-          filledCount++;
+          checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+          checkedCount++;
+        } catch (e) {
+          console.error(`Error checking checkbox:`, e);
         }
-      });
-      
-      return filledCount;
-    } catch (e) {
-      console.log('Error filling form:', e);
-      return filledCount;
+      }
+    });
+    
+    return checkedCount;
+  },
+  
+  /**
+   * Determine if a checkbox is likely an agreement/terms checkbox
+   * @param {HTMLInputElement} checkbox - The checkbox to evaluate
+   * @returns {boolean} Whether it's likely an agreement checkbox
+   */
+  isLikelyAgreementCheckbox(checkbox) {
+    // Get text associated with the checkbox
+    let checkboxText = '';
+    
+    // Check if it has a label
+    if (checkbox.labels && checkbox.labels.length > 0) {
+      checkboxText = checkbox.labels[0].textContent;
     }
+    
+    // Check for nearby text nodes
+    if (!checkboxText) {
+      const parent = checkbox.parentElement;
+      if (parent) {
+        checkboxText = parent.textContent;
+      }
+    }
+    
+    // Check if it's near terms-related text
+    if (!checkboxText) {
+      const nextSibling = checkbox.nextElementSibling;
+      if (nextSibling) {
+        checkboxText = nextSibling.textContent;
+      }
+    }
+    
+    // Look for terms-related keywords
+    const termsKeywords = ['agree', 'consent', 'terms', 'conditions', 'privacy', 'policy', 'subscribe', 'newsletter', 'accept'];
+    
+    // Check if any keyword is present
+    for (const keyword of termsKeywords) {
+      if (checkboxText.toLowerCase().includes(keyword.toLowerCase())) {
+        return true;
+      }
+    }
+    
+    // Check the name or ID of the checkbox
+    const nameOrId = checkbox.name || checkbox.id || '';
+    for (const keyword of termsKeywords) {
+      if (nameOrId.toLowerCase().includes(keyword.toLowerCase())) {
+        return true;
+      }
+    }
+    
+    // If we couldn't determine if it's a terms checkbox, default to true if it's alone
+    // or not part of a group of checkboxes (like in a product options list)
+    const nearbyCheckboxCount = checkbox.parentElement ? 
+      checkbox.parentElement.querySelectorAll('input[type="checkbox"]').length : 0;
+      
+    return nearbyCheckboxCount <= 1;
   }
 };
 

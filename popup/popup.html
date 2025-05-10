@@ -62,12 +62,35 @@
       font-weight: bold;
     }
     
-    .control-group select {
+    .control-group select,
+    .control-group input[type="number"],
+    .control-group input[type="text"] {
       flex-grow: 1;
       padding: 8px;
       border-radius: 4px;
       border: 1px solid #ccc;
       background-color: white;
+    }
+    
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 10px;
+    }
+    
+    .radio-option {
+      display: flex;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    
+    .radio-option input[type="radio"] {
+      margin-right: 8px;
+    }
+    
+    .section-header {
+      font-weight: bold;
+      margin-bottom: 8px;
     }
     
     #list {
@@ -159,6 +182,16 @@
       align-items: center;
     }
     
+    .checkbox-option {
+      display: flex;
+      align-items: center;
+      margin-top: 5px;
+    }
+    
+    .checkbox-option input[type="checkbox"] {
+      margin-right: 8px;
+    }
+    
     @media (prefers-color-scheme: dark) {
       body {
         background-color: #1f2937;
@@ -182,7 +215,9 @@
         background-color: #374151;
       }
       
-      .control-group select {
+      .control-group select,
+      .control-group input[type="number"],
+      .control-group input[type="text"] {
         background-color: #374151;
         color: #f9fafb;
         border-color: #4b5563;
@@ -211,6 +246,7 @@
   </h3>
   
   <div class="settings-panel">
+    <!-- Region and ZIP -->
     <div class="control-group">
       <label for="region">Region:</label>
       <select id="region">
@@ -220,13 +256,62 @@
     </div>
     
     <div class="control-group">
-      <label for="model-selector">Model:</label>
-      <select id="model-selector">
-        <option value="my">Model Y</option>
-        <option value="m3">Model 3</option>
-        <option value="ms">Model S</option>
-        <option value="mx">Model X</option>
-      </select>
+      <label for="zip">ZIP Code:</label>
+      <input type="text" id="zip" placeholder="Enter ZIP code">
+    </div>
+    
+    <!-- Price Threshold - Direct Input -->
+    <div class="control-group">
+      <label for="price-input">Max Price:</label>
+      <input type="number" id="price-input" placeholder="Enter maximum price">
+    </div>
+    
+    <!-- Model Selection with Radio Buttons -->
+    <div class="section-header">Tesla Model</div>
+    <div class="radio-group" id="model-group">
+      <div class="radio-option">
+        <input type="radio" id="model-y" name="model" value="my" checked>
+        <label for="model-y">Model Y</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="model-3" name="model" value="m3">
+        <label for="model-3">Model 3</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="model-s" name="model" value="ms">
+        <label for="model-s">Model S</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="model-x" name="model" value="mx">
+        <label for="model-x">Model X</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="cybertruck" name="model" value="ct">
+        <label for="cybertruck">Cybertruck</label>
+      </div>
+    </div>
+    
+    <!-- Payment Type -->
+    <div class="section-header">Payment Method</div>
+    <div class="radio-group" id="payment-group">
+      <div class="radio-option">
+        <input type="radio" id="payment-cash" name="payment" value="cash" checked>
+        <label for="payment-cash">Cash</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="payment-lease" name="payment" value="lease">
+        <label for="payment-lease">Lease</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="payment-finance" name="payment" value="finance">
+        <label for="payment-finance">Finance</label>
+      </div>
+    </div>
+    
+    <!-- Federal Tax Credit Checkbox -->
+    <div class="checkbox-option">
+      <input type="checkbox" id="tax-credit" checked>
+      <label for="tax-credit">Include Federal Tax Credit</label>
     </div>
   </div>
   
@@ -242,7 +327,7 @@
   <div id="list">Loading...</div>
   
   <div class="button-group">
-    <button id="fillForm" class="btn button-full" data-i18n="fillForm">Fill Form</button>
+    <button id="apply-filters" class="btn button-full">Apply Filters</button>
     <button id="toggle" class="btn" data-i18n="showPanel">Show Panel</button>
     <button id="openOptions" class="btn btn-secondary" data-i18n="settings">Settings</button>
   </div>

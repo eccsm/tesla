@@ -1,7 +1,7 @@
 /**
  * Tesla AutoPilot Popup Script
  * 
- * Enhanced popup with better error handling and model selection
+ * Enhanced with Tesla-specific filters and direct price input
  */
 
 // Language strings for localization
@@ -13,6 +13,7 @@ const i18n = {
     fillForm: "Fill Form",
     showPanel: "Show Panel",
     settings: "Settings",
+    applyFilters: "Apply Filters",
     noActiveTab: "No active tab found",
     formFillingFailed: "Form filling failed",
     tabError: "Tab communication error",
@@ -22,7 +23,9 @@ const i18n = {
     fieldsField: "fields filled",
     openingOrder: "Opening order page with your settings...",
     connectionError: "Could not connect to Tesla page. Opening a new tab...",
-    notTeslaPage: "Not on a Tesla page. Opening Tesla website..."
+    notTeslaPage: "Not on a Tesla page. Opening Tesla website...",
+    filtersApplied: "Filters applied successfully",
+    refreshing: "Refreshing results..."
   },
   TR: {
     loading: "Yükleniyor...",
@@ -31,6 +34,7 @@ const i18n = {
     fillForm: "Formu Doldur",
     showPanel: "Panel Göster",
     settings: "Ayarlar",
+    applyFilters: "Filtreleri Uygula",
     noActiveTab: "Aktif sekme bulunamadı",
     formFillingFailed: "Form doldurma başarısız",
     tabError: "Sekme ile iletişim hatası",
@@ -40,7 +44,9 @@ const i18n = {
     fieldsField: "alan dolduruldu",
     openingOrder: "Ayarlarınızla sipariş sayfası açılıyor...",
     connectionError: "Tesla sayfasına bağlanılamadı. Yeni sekme açılıyor...",
-    notTeslaPage: "Tesla sayfasında değilsiniz. Tesla websitesi açılıyor..."
+    notTeslaPage: "Tesla sayfasında değilsiniz. Tesla websitesi açılıyor...",
+    filtersApplied: "Filtreler başarıyla uygulandı",
+    refreshing: "Sonuçlar yenileniyor..."
   }
 };
 
@@ -61,6 +67,29 @@ const MODELS = {
   MODEL_X: {
     id: "mx",
     name: "Model X"
+  },
+  CYBERTRUCK: {
+    id: "ct",
+    name: "Cybertruck"
+  }
+};
+
+// Payment Types
+const PAYMENT_TYPES = {
+  CASH: "cash",
+  LEASE: "lease",
+  FINANCE: "finance"
+};
+
+// Region-specific defaults
+const REGION_DEFAULTS = {
+  US: {
+    priceFloor: 60000,
+    zip: "94401"
+  },
+  TR: {
+    priceFloor: 1590000,
+    zip: "06000"
   }
 };
 
@@ -108,16 +137,119 @@ const RegionManager = {
       el.textContent = await this.getString(key);
     });
     
-    // Update model selector if available
-    const modelSelector = document.getElementById("model-selector");
-    if (modelSelector) {
-      // Get current model
-      const { model = MODELS.MODEL_Y.id } = await chrome.storage.sync.get("model");
-      modelSelector.value = model;
-    }
+    // Update apply filters button
+    document.getElementById("apply-filters").textContent = await this.getString("applyFilters");
+    
+    // Update placeholders for price input with currency symbol
+    const priceInput = document.getElementById("price-input");
+    const currencySymbol = region === "TR" ? "₺" : "$";
+    priceInput.placeholder = `Enter maximum price (${currencySymbol})`;
     
     // Refresh results
     await ResultsManager.loadResults();
+  }
+};
+
+// Filter Manager - Fixed with correct parameter names
+const FilterManager = {
+  // Initialize filters from storage
+  async initializeFilters() {
+    // Get region for defaults
+    const region = await RegionManager.getRegion();
+    const defaults = REGION_DEFAULTS[region] || REGION_DEFAULTS.US;
+    
+    // Get saved filters
+    const {
+      model = "my",
+      paymentType = "cash",
+      priceMax = defaults.priceMax,  // FIXED: Changed from priceFloor to priceMax
+      zip = defaults.zip,
+      includeTaxCredit = true
+    } = await chrome.storage.sync.get([
+      "model", 
+      "paymentType", 
+      "priceMax",  // FIXED: Changed from priceFloor to priceMax
+      "zip",
+      "includeTaxCredit"
+    ]);
+    
+    // Update model radio buttons
+    const modelRadios = document.querySelectorAll('input[name="model"]');
+    modelRadios.forEach(radio => {
+      radio.checked = radio.value === model;
+    });
+    
+    // Update payment type radio buttons
+    const paymentRadios = document.querySelectorAll('input[name="payment"]');
+    paymentRadios.forEach(radio => {
+      radio.checked = radio.value === paymentType;
+    });
+    
+    // Update price input
+    const priceInput = document.getElementById("price-input");
+    priceInput.value = priceMax;  // FIXED: Changed from priceFloor to priceMax
+    
+    // Update ZIP code
+    document.getElementById("zip").value = zip;
+    
+    // Update tax credit checkbox
+    document.getElementById("tax-credit").checked = includeTaxCredit;
+  },
+  
+  // Get current filter values from UI
+  getFiltersFromUI() {
+    // Get selected model
+    const modelRadios = document.querySelectorAll('input[name="model"]');
+    let selectedModel = "my"; // Default to Model Y
+    modelRadios.forEach(radio => {
+      if (radio.checked) {
+        selectedModel = radio.value;
+      }
+    });
+    
+    // Get selected payment type
+    const paymentRadios = document.querySelectorAll('input[name="payment"]');
+    let selectedPayment = "cash"; // Default to Cash
+    paymentRadios.forEach(radio => {
+      if (radio.checked) {
+        selectedPayment = radio.value;
+      }
+    });
+    
+    // Get price from input
+    const priceInput = document.getElementById("price-input");
+    let priceMax = 0;  // FIXED: Changed from priceFloor to priceMax
+    
+    // Validate price input
+    if (priceInput.value && !isNaN(priceInput.value)) {
+      priceMax = parseInt(priceInput.value);  // FIXED: Changed from priceFloor to priceMax
+    } else {
+      // Use region-specific default if invalid
+      const region = RegionManager.getRegion();
+      const defaults = REGION_DEFAULTS[region] || REGION_DEFAULTS.US;
+      priceMax = defaults.priceMax;  // FIXED: Changed from priceFloor to priceMax
+    }
+    
+    // Get ZIP code
+    const zip = document.getElementById("zip").value.trim();
+    
+    // Get tax credit inclusion
+    const includeTaxCredit = document.getElementById("tax-credit").checked;
+    
+    return {
+      model: selectedModel,
+      paymentType: selectedPayment,
+      priceMax: priceMax,  // FIXED: Changed from priceFloor to priceMax
+      zip,
+      includeTaxCredit
+    };
+  },
+  
+  // Save filters to storage
+  async saveFilters() {
+    const filters = this.getFiltersFromUI();
+    await chrome.storage.sync.set(filters);
+    return filters;
   }
 };
 
@@ -128,17 +260,22 @@ const ResultsManager = {
     return document.getElementById("list");
   },
   
-  // Render loading state
+  // Updated loading and empty state renderers
   async showLoading() {
     const loadingText = await RegionManager.getString("loading");
-    this.getRoot().textContent = loadingText;
+    this.getRoot().className = "loading";
+    this.getRoot().innerHTML = `
+      <div class="loading-spinner"></div>
+      ${loadingText}
+    `;
+  },
+
+  async showEmpty() {Frenderre
+    const emptyText = await RegionManager.getString("empty");
+    this.getRoot().className = "empty";
+    this.getRoot().innerHTML = emptyText;
   },
   
-  // Render empty state
-  async showEmpty() {
-    const emptyText = await RegionManager.getString("empty");
-    this.getRoot().textContent = emptyText;
-  },
   
   // Format price for display
   async formatPrice(price) {
@@ -151,26 +288,39 @@ const ResultsManager = {
     return regionConfig.symbol + price.toLocaleString(regionConfig.locale);
   },
   
-  // Render a single car result
-  async renderCarItem(car) {
-    // Format price for display
-    const formattedPrice = car.formattedPrice || await this.formatPrice(car.price);
-    
-    // Get URL for the car
-    const carUrl = car.url || `https://www.tesla.com${car.VINUrl || car.VINUrlP || ''}`;
-    
-    // Build HTML
-    return `
-      <a href="${carUrl}"
-         target="_blank" 
-         class="row"
-         data-vin="${car.vin || car.VIN || ''}"
-         data-path="${car.VINUrl || car.VINUrlP || ''}">
-        ${formattedPrice} – ${car.model || car.Model} ${car.trim || car.TRIM || ''}
-      </a>`;
-  },
+// Updated vehicle item renderer with improved HTML structure
+async renderCarItem(car) {
+  // Format price for display
+  const formattedPrice = car.formattedPrice || await this.formatPrice(car.price);
   
-  // Render all car results
+  // Get URL for the car
+  const carUrl = car.url || `https://www.tesla.com${car.VINUrl || car.VINUrlP || ''}`;
+  
+  // Get model and trim
+  const model = car.model || car.Model || 'Tesla';
+  const trim = car.trim || car.TRIM || '';
+  
+  // Get VIN if available (shortened for display)
+  const vin = car.vin || car.VIN || '';
+  const displayVin = vin ? `VIN: ${vin.substring(vin.length - 6)}` : '';
+  
+  // Build HTML with better structure and styling classes
+  return `
+    <a href="${carUrl}"
+       target="_blank" 
+       class="row"
+       data-vin="${vin}"
+       data-path="${car.VINUrl || car.VINUrlP || ''}">
+      <div class="vehicle-info">
+        <span class="vehicle-model">${model}</span>
+        <span class="vehicle-trim">${trim}</span>
+        ${displayVin ? `<span class="vehicle-vin">${displayVin}</span>` : ''}
+      </div>
+      <span class="vehicle-price">${formattedPrice}</span>
+    </a>`;
+},
+  
+  // Updated renderResults method with class restoration
   async renderResults(cars) {
     if (!cars || cars.length === 0) {
       await this.showEmpty();
@@ -190,8 +340,14 @@ const ResultsManager = {
     // Render each car
     const renderedItems = await Promise.all(topCars.map(car => this.renderCarItem(car)));
     
+    // Get the root element
+    const rootElement = this.getRoot();
+    
+    // Reset the element class to default (remove loading/empty classes)
+    rootElement.className = "";
+    
     // Update the DOM
-    this.getRoot().innerHTML = renderedItems.join("");
+    rootElement.innerHTML = renderedItems.join("");
     
     // Add click handlers
     this.attachClickHandlers();
@@ -336,55 +492,57 @@ const FormController = {
     }
   },
   
-  // Open Tesla inventory page - enhanced version
-  async openTeslaPage() {
-    try {
-      // Get current settings
-      const { region, model } = await chrome.storage.sync.get(["region", "model"]);
-      
-      // Default to Model Y if no model specified
-      const modelId = model || MODELS.MODEL_Y.id;
-      
-      // Build URL
-      const baseUrl = "https://www.tesla.com";
-      let path;
-      
-      if (region === "TR") {
-        path = `/tr_TR/inventory/new/${modelId}`;
-      } else {
-        path = `/inventory/new/${modelId}`;
-      }
-      
-      // Get other settings for URL parameters
-      const { priceFloor, rangeMiles, paymentType } = await chrome.storage.sync.get([
-        "priceFloor", 
-        "rangeMiles", 
-        "paymentType"
-      ]);
-      
-      // Build URL with query parameters
-      const url = new URL(baseUrl + path);
-      
-      // Add parameters if available
-      if (priceFloor) url.searchParams.set('price', priceFloor);
-      if (rangeMiles) url.searchParams.set('range', rangeMiles);
-      if (paymentType) url.searchParams.set('PaymentType', paymentType);
-      
-      // Set arrangeby to price
-      url.searchParams.set('arrangeby', 'price');
-      
-      const notificationText = await RegionManager.getString("openTesla");
-      this.showMessage(notificationText, true);
-      
-      // Open the URL
-      chrome.tabs.create({ url: url.toString() });
-    } catch (error) {
-      console.error("Error opening Tesla page:", error);
-      
-      // Fallback to basic URL
-      chrome.tabs.create({ url: "https://www.tesla.com/inventory/new/my" });
+// Open Tesla inventory page with correct approach
+async openTeslaPage() {
+  try {
+    // Get current filter settings
+    const filters = FilterManager.getFiltersFromUI();
+    
+    // Get current region
+    const region = await RegionManager.getRegion();
+    const regionDefaults = REGION_DEFAULTS[region] || REGION_DEFAULTS.US;
+    
+    // Construct the URL for browser navigation
+    const baseUrl = "https://www.tesla.com";
+    let path;
+    
+    if (region === "TR") {
+      path = `/tr_TR/inventory/new/${filters.model}`;
+    } else {
+      path = `/inventory/new/${filters.model}`;
     }
-  },
+    
+    // Simple URL for browser navigation - using LET instead of CONST
+    let browserUrl = `${baseUrl}${path}?arrangeby=price`;
+    
+    // Add parameters one by one
+    if (filters.zip) {
+      browserUrl += `&zip=${filters.zip}`;
+    }
+    
+    // Include price as a regular parameter for the browser URL
+    if (filters.priceMax && filters.priceMax > 0) {
+      browserUrl += `&price=${filters.priceMax}`;
+    }
+    
+    // Include payment type if specified
+    if (filters.paymentType) {
+      browserUrl += `&PaymentType=${filters.paymentType}`;
+    }
+    
+    // Notify user
+    const notificationText = await RegionManager.getString("openTesla");
+    this.showMessage(notificationText, true);
+    
+    // Open the URL - using the simpler URL for browser navigation
+    chrome.tabs.create({ url: browserUrl });
+  } catch (error) {
+    console.error("Error opening Tesla page:", error);
+    
+    // Fallback to basic URL
+    chrome.tabs.create({ url: "https://www.tesla.com/inventory/new/my" });
+  }
+},
   
   // Open order page with car details and fill form
   async openOrderPage(path, vin) {
@@ -415,7 +573,7 @@ const FormController = {
   },
   
   // Show popup notification
-  showMessage(message, isSuccess) {
+  async showMessage(message, isSuccess) {
     const notif = document.getElementById("notification");
     
     if (notif) {
@@ -438,7 +596,7 @@ const FormController = {
 
 // Panel Toggle Controller
 const PanelToggleController = {
-  // Toggle the panel in the active tab with improved error handling
+  // Toggle the panel in the active tab
   togglePanel: async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -490,15 +648,15 @@ const DataRefreshController = {
       // Show loading state
       ResultsManager.showLoading();
       
-      // Get current settings
-      const settings = await chrome.storage.sync.get([
-        "region", 
-        "model", 
-        "priceFloor", 
-        "rangeMiles",
-        "paymentType",
-        "zip"
-      ]);
+      // Get current settings from UI
+      const settings = FilterManager.getFiltersFromUI();
+      
+      // Get region
+      const region = await RegionManager.getRegion();
+      settings.region = region;
+      
+      const refreshText = await RegionManager.getString("refreshing");
+      FormController.showMessage(refreshText, true);
       
       // Trigger background refresh
       chrome.runtime.sendMessage({ 
@@ -526,6 +684,9 @@ const DataRefreshController = {
 
 // Initialize the popup
 document.addEventListener("DOMContentLoaded", async () => {
+  // Initialize filters from storage
+  await FilterManager.initializeFilters();
+  
   // Load the current region
   const region = await RegionManager.getRegion();
   document.getElementById("region").value = region;
@@ -535,9 +696,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   
   // Set up button handlers
   document.getElementById("toggle").addEventListener("click", PanelToggleController.togglePanel);
-  document.getElementById("fillForm").addEventListener("click", () => FormController.fillForm());
   document.getElementById("openOptions").addEventListener("click", () => FormController.openOptions());
   document.getElementById("refresh-button").addEventListener("click", DataRefreshController.refreshData);
+  
+  // Set up apply filters button
+  document.getElementById("apply-filters").addEventListener("click", async () => {
+    // Save filters
+    await FilterManager.saveFilters();
+    
+    // Show success message
+    const filtersAppliedText = await RegionManager.getString("filtersApplied");
+    FormController.showMessage(filtersAppliedText, true);
+    
+    // Refresh data
+    await DataRefreshController.refreshData();
+  });
   
   // Set up region change handler
   document.getElementById("region").addEventListener("change", async (e) => {
@@ -547,23 +720,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Trigger a refresh with the new region
     DataRefreshController.refreshData();
   });
-  
-  // Set up model selector if available
-  const modelSelector = document.getElementById("model-selector");
-  if (modelSelector) {
-    modelSelector.addEventListener("change", async (e) => {
-      await chrome.storage.sync.set({ model: e.target.value });
-      
-      // Trigger a refresh with the new model
-      DataRefreshController.refreshData();
-    });
-  }
-  
-  // Set up refresh button if available
-  const refreshButton = document.getElementById("refresh-button");
-  if (refreshButton) {
-    refreshButton.addEventListener("click", DataRefreshController.refreshData);
-  }
   
   // Initial data refresh
   DataRefreshController.refreshData();
