@@ -1,165 +1,271 @@
-// Tesla Inventory Service - Revised with fallbacks for failed fetches
+// Enhanced Tesla Inventory Service
+// Add this to your background.js file or as a new service file
+
 const TeslaInventoryService = {
-  // API endpoint for inventory
+  // Base API URL for inventory
   API_URL: "https://www.tesla.com/inventory/api/v1/inventory-results",
   
-  // Region-specific default settings
-  REGION_DEFAULTS: {
+  // Region-specific configurations
+  REGION_CONFIGS: {
     US: {
-      zip: "94401",
-      priceMax: 60000,
-      lng: -122.1257,
-      lat: 47.6722,
-      market: "US",
-      language: "en",
-      super_region: "north america",
+      baseUrl: "https://www.tesla.com",
       currencySymbol: "$",
-      currencyLocale: "en-US"
+      defaultZip: "90001",
+      language: "en",
+      market: "US",
+      super_region: "north america"
     },
     TR: {
-      zip: "06000",
-      priceMax: 1590000,
-      lng: 0,
-      lat: 0,
-      market: "TR",
-      language: "tr",
-      super_region: "europe",
+      baseUrl: "https://www.tesla.com/tr_TR",
       currencySymbol: "₺",
-      currencyLocale: "tr-TR"
+      defaultZip: "34000",
+      language: "tr",
+      market: "TR",
+      super_region: "europe"
     }
   },
   
-  DEFAULT_MODEL: "my",
+  // Model configurations
+  MODELS: {
+    m3: {
+      displayName: "Model 3",
+      trims: ["RWD", "Long Range", "Performance"]
+    },
+    my: {
+      displayName: "Model Y",
+      trims: ["RWD", "Long Range", "Performance"]
+    },
+    ms: {
+      displayName: "Model S",
+      trims: ["Long Range", "Plaid"]
+    },
+    mx: {
+      displayName: "Model X",
+      trims: ["Long Range", "Plaid"]
+    },
+    ct: {
+      displayName: "Cybertruck",
+      trims: ["Single Motor", "Dual Motor", "Tri Motor"]
+    }
+  },
   
   /**
-   * Fetch inventory with multiple fallback approaches
+   * Fetch inventory data with advanced filters
+   * @param {Object} filters - Filtering options
+   * @returns {Promise<Array>} - Filtered inventory results
    */
-  async fetchInventory(priceMax, zip, region = "US", model = null) {
+  async fetchInventory(filters = {}) {
     try {
-      console.log(`Fetching Tesla inventory for region: ${region}, model: ${model || this.DEFAULT_MODEL}, zip: ${zip}, priceMax: ${priceMax}`);
+      // Set default filters
+      const defaultFilters = {
+        region: "US",
+        model: "my",
+        priceMax: null,
+        priceMin: null,
+        zip: null,
+        range: null,
+        trimLevel: null
+      };
       
-      // Try different approaches in sequence
-      let results = [];
+      // Merge with provided filters
+      const options = { ...defaultFilters, ...filters };
       
-      // First try direct API with minimal browser-like headers
-      try {
-        results = await this.fetchDirectAPI(priceMax, zip, region, model);
-        if (results.length > 0) {
-          console.log("Successfully fetched using direct API");
-          return results;
-        }
-      } catch (err) {
-        console.log("Direct API fetch failed, trying alternatives:", err);
+      // Get region configuration
+      const regionConfig = this.REGION_CONFIGS[options.region] || this.REGION_CONFIGS.US;
+      
+      // Build the proper query structure that Tesla's API expects
+      const queryObject = {
+        query: {
+          model: options.model,
+          condition: "new",
+          options: {},
+          arrangeby: "Price",
+          order: "asc",
+          market: regionConfig.market,
+          language: regionConfig.language,
+          super_region: regionConfig.super_region,
+          zip: options.zip || regionConfig.defaultZip
+        },
+        offset: 0,
+        count: 50,
+        outsideOffset: 0,
+        outsideSearch: false
+      };
+      
+      // Add price filter if provided
+      if (options.priceMax && options.priceMax > 0) {
+        queryObject.query.options.PRICE = options.priceMax;
       }
       
-      // As a backup, generate some placeholder data for testing
-      console.log("Using fallback with placeholder data");
-      return this.generatePlaceholderData(region, model, priceMax);
-    } catch (err) {
-      console.error("All fetch methods failed:", err);
+      // Add range filter if provided
+      if (options.range && options.range > 0) {
+        queryObject.query.options.RANGE = options.range;
+      }
+      
+      // Add trim level filter if provided
+      if (options.trimLevel) {
+        queryObject.query.options.TRIM = options.trimLevel;
+      }
+      
+      // Construct URL with the query parameter
+      const queryParam = encodeURIComponent(JSON.stringify(queryObject));
+      const url = `${this.API_URL}?query=${queryParam}`;
+      
+      console.log("Fetching Tesla inventory with URL:", url.substring(0, 100) + "...");
+      
+      // Fetch the data
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        credentials: 'omit'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API returned status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Check if the response has the expected structure
+      if (!data.results || !Array.isArray(data.results)) {
+        throw new Error("Unexpected API response format");
+      }
+      
+      // Process and filter results
+      let results = this.processResults(data.results, options);
+      
+      // Apply additional filtering for min price if needed
+      if (options.priceMin && options.priceMin > 0) {
+        results = results.filter(vehicle => vehicle.price >= options.priceMin);
+      }
+      
+      console.log(`Found ${results.length} matching vehicles after filtering`);
+      
+      return results;
+    } catch (error) {
+      console.error("Error fetching Tesla inventory:", error);
+      
+      // Generate placeholder data if in development/testing
+      if (process.env.NODE_ENV === 'development') {
+        return this.generatePlaceholderData(options);
+      }
+      
       return [];
     }
   },
   
   /**
-   * Try to fetch directly from Tesla's API
+   * Process and format inventory results
+   * @param {Array} results - Raw results from API
+   * @param {Object} options - Filter options
+   * @returns {Array} - Processed results
    */
-  async fetchDirectAPI(priceMax, zip, region, model) {
-    // Get region defaults
-    const regionDefaults = this.REGION_DEFAULTS[region] || this.REGION_DEFAULTS.US;
+  processResults(results, options) {
+    // Get region configuration
+    const regionConfig = this.REGION_CONFIGS[options.region] || this.REGION_CONFIGS.US;
     
-    // Build the proper JSON query structure that Tesla's API expects
-    const queryObject = {
-      query: {
-        model: model || this.DEFAULT_MODEL,
-        condition: "new",
-        options: {},
-        arrangeby: "Price",
-        order: "asc",
-        market: regionDefaults.market,
-        language: regionDefaults.language,
-        super_region: regionDefaults.super_region,
-        zip: zip || regionDefaults.zip
-      },
-      offset: 0,
-      count: 50,
-      outsideOffset: 0,
-      outsideSearch: false
-    };
-    
-    // Add price filter if provided
-    if (priceMax && priceMax > 0) {
-      queryObject.query.options.PRICE = priceMax;
-    }
-    
-    // Construct URL with the query parameter
-    const queryParam = encodeURIComponent(JSON.stringify(queryObject));
-    const url = `${this.API_URL}?query=${queryParam}`;
-    
-    console.log("Using URL format:", url.substring(0, 100) + "...");
-    
-    // IMPORTANT: Use very basic fetch with minimal headers to avoid CORS issues
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)'
-      },
-      // Don't include credentials or complex headers that might trigger CORS preflight
-      credentials: 'omit'
+    // Format each vehicle
+    return results.map(vehicle => {
+      // Extract key information
+      const price = vehicle.PurchasePrice || vehicle.Price || 0;
+      const vin = vehicle.VIN || '';
+      const model = this.MODELS[options.model]?.displayName || 'Tesla';
+      const trim = vehicle.TRIM || '';
+      const range = vehicle.RANGE || '';
+      const color = vehicle.PAINT || '';
+      const wheels = vehicle.WHEELS || '';
+      const interior = vehicle.INTERIOR || '';
+      
+      // Format price for display
+      const formattedPrice = `${regionConfig.currencySymbol}${price.toLocaleString()}`;
+      
+      // Create inventory URL
+      const inventoryPath = vehicle.VINurl || `/inventory/new/${options.model}/${vin}`;
+      const inventoryUrl = `${regionConfig.baseUrl}${inventoryPath}`;
+      
+      // Create order URL
+      const orderPath = vehicle.VINurl?.replace('/inventory/', '/myorder/') || `/myorder/${options.model}/${vin}`;
+      const orderUrl = `${regionConfig.baseUrl}${orderPath}`;
+      
+      // Return formatted vehicle object
+      return {
+        price,
+        formattedPrice,
+        vin,
+        model,
+        trim,
+        range,
+        color,
+        wheels,
+        interior,
+        inventoryUrl,
+        orderUrl,
+        lastSeen: new Date().toISOString()
+      };
     });
-    
-    if (!response.ok) {
-      throw new Error(`API returned status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // Check if the response has the expected structure
-    if (!data.results || !Array.isArray(data.results)) {
-      throw new Error("Unexpected API response format");
-    }
-    
-    console.log(`Found ${data.results.length} Tesla vehicles`);
-    
-    // Process results to ensure consistent format
-    return this.formatResults(data.results, region, priceMax);
   },
   
   /**
-   * Generate placeholder data for testing when API fails
+   * Generate placeholder data for testing
+   * @param {Object} options - Filter options
+   * @returns {Array} - Placeholder vehicle data
    */
-  generatePlaceholderData(region, model, priceMax) {
-    const regionDefaults = this.REGION_DEFAULTS[region] || this.REGION_DEFAULTS.US;
-    const modelCode = model || this.DEFAULT_MODEL;
-    const currencySymbol = regionDefaults.currencySymbol;
+  generatePlaceholderData(options) {
+    const regionConfig = this.REGION_CONFIGS[options.region] || this.REGION_CONFIGS.US;
+    const modelInfo = this.MODELS[options.model] || this.MODELS.my;
     
-    // Generate 5 different price points under the max price
+    // Generate 5 different price points
     const results = [];
-    const modelName = this.getModelName(modelCode);
-    const maxPrice = priceMax || regionDefaults.priceMax;
+    const maxPrice = options.priceMax || 60000;
+    const minPrice = options.priceMin || maxPrice * 0.85;
     
-    // Create multiple price points
+    // Create price points between min and max
+    const priceStep = (maxPrice - minPrice) / 4;
     const priceTiers = [
-      maxPrice * 0.75,
-      maxPrice * 0.8,
-      maxPrice * 0.85,
-      maxPrice * 0.9,
-      maxPrice * 0.95
+      minPrice,
+      minPrice + priceStep,
+      minPrice + priceStep * 2,
+      minPrice + priceStep * 3,
+      maxPrice
     ];
+    
+    // Color options
+    const colors = ['Pearl White', 'Solid Black', 'Deep Blue Metallic', 'Red Multi-Coat', 'Silver Metallic'];
+    
+    // Wheel options
+    const wheels = ['19" Sport', '20" Induction', '21" Überturbine'];
+    
+    // Interior options
+    const interiors = ['All Black', 'Black and White', 'Cream'];
     
     // Generate sample cars at different price points
     priceTiers.forEach((price, index) => {
-      const roundedPrice = Math.floor(price / 1000) * 1000; // Round to nearest 1000
+      const roundedPrice = Math.floor(price / 1000) * 1000;
+      const colorIndex = index % colors.length;
+      const wheelIndex = index % wheels.length;
+      const interiorIndex = index % interiors.length;
+      const trimIndex = index % modelInfo.trims.length;
+      
+      // Generate a random VIN
+      const vin = this.generateRandomVIN();
       
       results.push({
         price: roundedPrice,
-        formattedPrice: `${currencySymbol}${roundedPrice.toLocaleString(regionDefaults.currencyLocale)}`,
-        model: modelName,
-        trim: this.getRandomTrim(modelCode),
-        vin: this.generateRandomVIN(),
-        url: `https://www.tesla.com/inventory/new/${modelCode}`,
-        demoVehicle: true
+        formattedPrice: `${regionConfig.currencySymbol}${roundedPrice.toLocaleString()}`,
+        vin,
+        model: modelInfo.displayName,
+        trim: modelInfo.trims[trimIndex],
+        range: `${300 + index * 10} mi`,
+        color: colors[colorIndex],
+        wheels: wheels[wheelIndex],
+        interior: interiors[interiorIndex],
+        inventoryUrl: `${regionConfig.baseUrl}/inventory/new/${options.model}/${vin}`,
+        orderUrl: `${regionConfig.baseUrl}/myorder/${options.model}/${vin}`,
+        lastSeen: new Date().toISOString(),
+        isPlaceholder: true
       });
     });
     
@@ -167,39 +273,8 @@ const TeslaInventoryService = {
   },
   
   /**
-   * Get full model name from code
-   */
-  getModelName(modelCode) {
-    const models = {
-      'my': 'Model Y',
-      'm3': 'Model 3',
-      'ms': 'Model S',
-      'mx': 'Model X',
-      'ct': 'Cybertruck'
-    };
-    
-    return models[modelCode] || 'Tesla';
-  },
-  
-  /**
-   * Get a random trim for the model
-   */
-  getRandomTrim(modelCode) {
-    const trims = {
-      'my': ['Long Range', 'Performance'],
-      'm3': ['Standard Range Plus', 'Long Range', 'Performance'],
-      'ms': ['Long Range', 'Plaid'],
-      'mx': ['Long Range', 'Plaid'],
-      'ct': ['Single Motor', 'Dual Motor', 'Tri Motor']
-    };
-    
-    const modelTrims = trims[modelCode] || ['Standard'];
-    const randomIndex = Math.floor(Math.random() * modelTrims.length);
-    return modelTrims[randomIndex];
-  },
-  
-  /**
    * Generate a random VIN for placeholder data
+   * @returns {string} - Random VIN
    */
   generateRandomVIN() {
     const characters = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789';
@@ -214,427 +289,284 @@ const TeslaInventoryService = {
   },
   
   /**
-   * Filter and format results for consistent structure
+   * Get available models for a region
+   * @param {string} region - Region code (e.g., 'US', 'TR')
+   * @returns {Array} - Array of available models
    */
-  formatResults(results, region, priceMax) {
-    const regionDefaults = this.REGION_DEFAULTS[region] || this.REGION_DEFAULTS.US;
+  getAvailableModels(region) {
+    // In a real implementation, this might vary by region
+    return Object.keys(this.MODELS).map(code => ({
+      code,
+      displayName: this.MODELS[code].displayName
+    }));
+  },
+  
+  /**
+   * Get available trims for a model
+   * @param {string} modelCode - Model code (e.g., 'my', 'm3')
+   * @returns {Array} - Array of available trims
+   */
+  getAvailableTrims(modelCode) {
+    const model = this.MODELS[modelCode];
+    if (!model) return [];
     
-    // Filter by price if needed
-    let filteredResults = results;
-    if (priceMax && priceMax > 0) {
-      filteredResults = results.filter(car => {
-        const carPrice = car.PurchasePrice || car.Price || car.price || 0;
-        return carPrice <= priceMax;
-      });
-      
-      console.log(`Filtered to ${filteredResults.length} cars under price ${priceMax}`);
-    }
-    
-    // Format results
-    return filteredResults.map(car => {
-      // Get the car price
-      const price = car.PurchasePrice || car.Price || car.price || 0;
-      
-      // Format the price for display
-      const formattedPrice = car.formattedPrice || 
-        `${regionDefaults.currencySymbol}${price.toLocaleString(regionDefaults.currencyLocale)}`;
-      
-      return {
-        ...car,
-        price: price,
-        formattedPrice: formattedPrice,
-        model: car.Model || car.model || 'Tesla',
-        trim: car.TRIM || car.trim || '',
-        vin: car.VIN || car.vin || '',
-        url: car.VehicleURL || car.VINUrl || car.url || ''
-      };
-    });
+    return model.trims;
   }
 };
 
-// Notification Manager - Enhanced for better user experience
-const NotificationManager = {
-  show(matches, priceFloor, region = "US") {
-    if (matches && matches.length) {
-      const regionDefaults = TeslaInventoryService.REGION_DEFAULTS[region] || TeslaInventoryService.REGION_DEFAULTS.US;
-      const currencySymbol = regionDefaults.currencySymbol;
-      const locale = regionDefaults.currencyLocale;
-      
-      // Set badge with number of matches
-      chrome.action.setBadgeText({ text: String(matches.length) });
-      chrome.action.setBadgeBackgroundColor({ color: "#3b82f6" });
-      
-      // Create a more detailed notification
-      let message = `${matches.length} ${matches.length === 1 ? 'car' : 'cars'} match your filter – click to open`;
-      
-      // If we have at least one match with price, include the lowest price
-      if (matches[0] && matches[0].price) {
-        const lowestPrice = matches[0].price;
-        const formattedPrice = matches[0].formattedPrice || 
-          `${currencySymbol}${lowestPrice.toLocaleString(locale)}`;
-        
-        message = `${matches.length} ${matches.length === 1 ? 'car' : 'cars'} from ${formattedPrice} – click to open`;
-      }
-      
-      // Create the notification
-      chrome.notifications.create("tesla-inventory-update", {
-        type: "basic",
-        iconUrl: "icons/science.png",
-        title: `🚗 Tesla under ${currencySymbol}${priceFloor.toLocaleString(locale)}`,
-        message: message,
-        priority: 2
-      });
-    } else {
-      // Clear badge if no matches
-      chrome.action.setBadgeText({ text: "" });
-    }
-  }
-};
-
-// Storage Manager - Enhanced for better data handling
-const StorageManager = {
-  async getSettings() {
+const InventoryMonitor = {
+  // Default polling intervals (in minutes)
+  DEFAULT_POLL_INTERVAL: 5,
+  AGGRESSIVE_POLL_INTERVAL: 1,
+  
+  // Active polling state
+  activeAlarm: null,
+  isMonitoring: false,
+  
+  /**
+   * Start monitoring for vehicles matching filters
+   * @param {Object} filters - Filtering options
+   * @param {number} intervalMinutes - Polling interval in minutes
+   * @returns {Promise<boolean>} - Success status
+   */
+  async startMonitoring(filters, intervalMinutes = this.DEFAULT_POLL_INTERVAL) {
     try {
-      const data = await chrome.storage.sync.get(["priceFloor", "zip", "region", "model"]);
-      const region = data.region || "US";
-      const regionDefaults = TeslaInventoryService.REGION_DEFAULTS[region];
+      // Stop any existing monitoring
+      this.stopMonitoring();
       
-      return { 
-        priceFloor: data.priceFloor || regionDefaults.priceFloor,
-        zip: data.zip || regionDefaults.zip,
-        region,
-        model: data.model || TeslaInventoryService.DEFAULT_MODEL
-      };
-    } catch (err) {
-      console.error("Error retrieving settings:", err);
-      return {
-        priceFloor: TeslaInventoryService.REGION_DEFAULTS.US.priceFloor,
-        zip: TeslaInventoryService.REGION_DEFAULTS.US.zip,
-        region: "US",
-        model: TeslaInventoryService.DEFAULT_MODEL
-      };
+      // Save the filters
+      await chrome.storage.sync.set({ monitoringFilters: filters });
+      
+      // Set up polling with Chrome alarms
+      this.activeAlarm = "tesla-inventory-monitor";
+      
+      chrome.alarms.create(this.activeAlarm, {
+        periodInMinutes: intervalMinutes,
+        delayInMinutes: 0.1 // Start almost immediately
+      });
+      
+      this.isMonitoring = true;
+      
+      // Set monitoring state
+      await chrome.storage.sync.set({
+        isMonitoring: true,
+        monitoringInterval: intervalMinutes,
+        monitoringStarted: new Date().toISOString()
+      });
+      
+      console.log(`Inventory monitoring started with interval: ${intervalMinutes} minutes`);
+      return true;
+    } catch (error) {
+      console.error("Error starting inventory monitoring:", error);
+      return false;
     }
   },
   
-  async saveResults(matches, region) {
+  /**
+   * Stop monitoring for vehicles
+   * @returns {Promise<boolean>} - Success status
+   */
+  async stopMonitoring() {
     try {
-      // Ensure we have a clean array with valid properties
-      const cleanedMatches = matches.map(car => {
-        // Basic validation
-        const price = typeof car.price === 'number' ? car.price : 
-                      typeof car.PurchasePrice === 'number' ? car.PurchasePrice : 
-                      typeof car.Price === 'number' ? car.Price : 0;
-                      
-        // Get model, defaulting to 'Tesla' if not present
-        const model = car.model || car.Model || 'Tesla';
-        
-        // Get trim, defaulting to empty string
-        const trim = car.trim || car.TRIM || '';
-        
-        // Get VIN, defaulting to empty string
-        const vin = car.vin || car.VIN || '';
-        
-        // Get URL, defaulting to empty string
-        const url = car.url || car.VehicleURL || car.VINUrl || car.vinUrl || '';
-        
-        // Get formatted price if available
-        const formattedPrice = car.formattedPrice || null;
-        
-        return {
-          price,
-          model,
-          trim,
-          vin,
-          url,
-          formattedPrice
-        };
+      // Clear the alarm if one is active
+      if (this.activeAlarm) {
+        await chrome.alarms.clear(this.activeAlarm);
+        this.activeAlarm = null;
+      }
+      
+      this.isMonitoring = false;
+      
+      // Update monitoring state
+      await chrome.storage.sync.set({
+        isMonitoring: false
       });
       
-      // Filter out any invalid entries (missing price or model)
-      const validMatches = cleanedMatches.filter(car => 
-        car.price > 0 && car.model && typeof car.model === 'string'
-      );
-      
-      // Sort by price (lowest first)
-      validMatches.sort((a, b) => a.price - b.price);
-      
-      // Store to local storage
-      return chrome.storage.local.set({ 
-        lastResults: validMatches,
-        lastUpdated: new Date().toISOString(),
-        region
-      });
-    } catch (err) {
-      console.error("Error saving results:", err);
+      console.log("Inventory monitoring stopped");
+      return true;
+    } catch (error) {
+      console.error("Error stopping inventory monitoring:", error);
+      return false;
     }
-  }
-};
-
-// App Controller - Improved for reliability
-const AppController = {
-  async runPoll() {
+  },
+  
+  /**
+   * Check inventory for matches
+   * @returns {Promise<Array>} - Matching vehicles
+   */
+  async checkInventory() {
     try {
-      console.log("Starting Tesla inventory poll...");
+      console.log("Running inventory check...");
       
-      const settings = await StorageManager.getSettings();
-      console.log("Using settings:", settings);
+      // Get monitoring filters
+      const { monitoringFilters } = await chrome.storage.sync.get("monitoringFilters");
       
-      // Make sure priceFloor is a number
-      const priceFloor = Number(settings.priceFloor);
-      if (isNaN(priceFloor)) {
-        console.error("Invalid price floor:", settings.priceFloor);
+      if (!monitoringFilters) {
+        console.error("No monitoring filters defined");
         return [];
       }
       
-      // Get model setting if available
-      const { model } = await chrome.storage.sync.get(["model"]);
+      // Fetch inventory with filters
+      const vehicles = await TeslaInventoryService.fetchInventory(monitoringFilters);
       
-      // Fetch inventory with full settings
-      const matches = await TeslaInventoryService.fetchInventory(
-        priceFloor,
-        settings.zip,
-        settings.region,
-        model
-      );
+      // Get previously seen vehicles
+      const { knownVehicles = {} } = await chrome.storage.local.get("knownVehicles");
       
-      console.log(`Found ${matches.length} matches under price threshold`);
+      // Find new vehicles
+      const newVehicles = vehicles.filter(vehicle => !knownVehicles[vehicle.vin]);
       
-      // Save the results
-      await StorageManager.saveResults(matches, settings.region);
-      
-      // Show notification if any matches found
-      if (matches.length > 0) {
-        NotificationManager.show(matches, priceFloor, settings.region);
-      }
-      
-      return matches;
-    } catch (err) {
-      console.error("Tesla poll failed:", err);
-      return [];
-    }
-  },
-
-  /**
-   * Check if content script is already injected in a tab
-   * @param {number} tabId - Tab ID to check
-   * @returns {Promise<boolean>} Whether content script is already injected
-   */
-  async isContentScriptInjected(tabId) {
-    try {
-      return new Promise(resolve => {
-        chrome.tabs.sendMessage(
-          tabId, 
-          { action: "ping" }, 
-          response => {
-            if (chrome.runtime.lastError) {
-              // No error thrown, but lastError is set - script not injected
-              console.log("Content script not injected:", chrome.runtime.lastError.message);
-              resolve(false);
-            } else if (response && response.status === "pong") {
-              // Got a pong response - script is injected
-              console.log("Content script is already injected");
-              resolve(true);
-            } else {
-              // Unknown state - assume not injected
-              console.log("Unknown content script state, assuming not injected");
-              resolve(false);
-            }
-          }
-        );
+      // Update known vehicles
+      vehicles.forEach(vehicle => {
+        knownVehicles[vehicle.vin] = {
+          lastSeen: new Date().toISOString(),
+          price: vehicle.price,
+          trim: vehicle.trim
+        };
       });
-    } catch (err) {
-      console.error("Error checking content script:", err);
-      return false;
-    }
-  },
-
-  /**
-   * Inject content script manually if needed
-   * @param {number} tabId - Tab ID to inject into
-   * @returns {Promise<boolean>} Success status
-   */
-  async injectContentScriptIfNeeded(tabId) {
-    try {
-      // First check if the script is already injected
-      const isInjected = await this.isContentScriptInjected(tabId);
-      if (isInjected) {
-        return true;
-      }
-
-      // If not injected, manually inject it
-      console.log("Manually injecting content script into tab:", tabId);
       
-      try {
-        // First inject CSS
-        await chrome.scripting.insertCSS({
-          target: { tabId },
-          files: ["style.css"]
-        });
-        
-        // Then inject JS
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: ["content/inject.js"]
-        });
-        
-        console.log("Content script manually injected");
-        
-        // Give it a moment to initialize
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        return true;
-      } catch (error) {
-        console.error("Error injecting script:", error);
-        return false;
+      // Save updated known vehicles
+      await chrome.storage.local.set({ knownVehicles });
+      
+      // Save most recent results
+      await chrome.storage.local.set({
+        lastInventoryCheck: new Date().toISOString(),
+        lastInventoryResults: vehicles
+      });
+      
+      // Show notification if new vehicles found
+      if (newVehicles.length > 0) {
+        this.showNotification(newVehicles, monitoringFilters);
       }
-    } catch (err) {
-      console.error("Failed to inject content script:", err);
-      return false;
+      
+      return vehicles;
+    } catch (error) {
+      console.error("Error checking inventory:", error);
+      return [];
     }
   },
   
   /**
-   * Send a message to a tab with automatic content script injection if needed
-   * @param {number} tabId - Tab ID to send message to
-   * @param {object} message - Message to send
-   * @returns {Promise<any>} Message response
+   * Show a notification for new vehicles
+   * @param {Array} vehicles - New vehicles
+   * @param {Object} filters - Applied filters
    */
-  async sendMessageWithRetry(tabId, message) {
-    try {
-      // First try sending the message directly
-      return new Promise((resolve, reject) => {
-        chrome.tabs.sendMessage(tabId, message, response => {
-          if (chrome.runtime.lastError) {
-            // Script might not be injected, try injecting it
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      }).catch(async err => {
-        console.log("Message send failed, trying to inject content script:", err);
-        
-        // Inject the content script and try again
-        const injected = await this.injectContentScriptIfNeeded(tabId);
-        if (!injected) {
-          throw new Error("Failed to inject content script");
-        }
-        
-        // Try sending the message again
-        return new Promise((resolve, reject) => {
-          chrome.tabs.sendMessage(tabId, message, response => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          });
-        });
-      });
-    } catch (err) {
-      console.error("Failed to send message:", err);
-      throw err;
+  showNotification(vehicles, filters) {
+    if (!vehicles || vehicles.length === 0) return;
+    
+    // Get region configuration
+    const regionConfig = TeslaInventoryService.REGION_CONFIGS[filters.region] || TeslaInventoryService.REGION_CONFIGS.US;
+    
+    // Format a nice notification
+    const lowestPrice = vehicles.reduce((min, v) => Math.min(min, v.price), Infinity);
+    const formattedPrice = `${regionConfig.currencySymbol}${lowestPrice.toLocaleString()}`;
+    
+    const modelName = TeslaInventoryService.MODELS[filters.model]?.displayName || 'Tesla';
+    const title = `${vehicles.length} ${modelName}${vehicles.length > 1 ? 's' : ''} found!`;
+    const message = `Starting at ${formattedPrice} - Click to view`;
+    
+    // Create Chrome notification
+    chrome.notifications.create("tesla-inventory-find", {
+      type: "basic",
+      iconUrl: "/icons/tesla.png",
+      title,
+      message,
+      priority: 2
+    });
+    
+    // Set badge with number of matches
+    chrome.action.setBadgeText({ text: String(vehicles.length) });
+    chrome.action.setBadgeBackgroundColor({ color: "#3b82f6" });
+    
+    // Play a notification sound if possible
+    if (typeof Audio !== 'undefined') {
+      try {
+        const audio = new Audio('/sounds/notification.mp3');
+        audio.play();
+      } catch (e) {
+        // Sound playback failed - no problem
+      }
     }
   },
-
+  
+  /**
+   * Initialize the monitor
+   */
   initialize() {
-    // Add notification click handler
-    chrome.notifications.onClicked.addListener((notificationId) => {
-      if (notificationId === "tesla-inventory-update") {
-        chrome.storage.sync.get(["region", "model"], (data) => {
-          const region = data.region || "US";
-          const model = data.model || TeslaInventoryService.DEFAULT_MODEL;
-          const baseUrl = "https://www.tesla.com";
-          const path = region === "TR" ? `/tr_TR/inventory/new/${model}` : `/inventory/new/${model}`;
-          chrome.tabs.create({ url: baseUrl + path });
-        });
-      }
-    });
-    
-    // Listen for messages from the popup or options page with improved error handling
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      console.log("Background received message:", request.action);
-      
-      if (request.action === "refreshData") {
-        // If settings provided, update them first
-        if (request.settings) {
-          chrome.storage.sync.set(request.settings, () => {
-            this.runPoll()
-              .then(matches => sendResponse({ status: "success", matches }))
-              .catch(error => {
-                console.error("Poll error:", error);
-                sendResponse({ status: "error", message: error.message });
-              });
-          });
-        } else {
-          this.runPoll()
-            .then(matches => sendResponse({ status: "success", matches }))
-            .catch(error => {
-              console.error("Poll error:", error);
-              sendResponse({ status: "error", message: error.message });
-            });
-        }
-        
-        return true; // Keep message channel open for async response
-      }
-      
-      // Handle tab content script message forwarding
-      if (request.action === "fillForm" || request.action === "togglePanel" || request.cmd === "togglePanel") {
-        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-          if (!tabs || tabs.length === 0) {
-            sendResponse({ status: "error", message: "No active tab found" });
-            return;
-          }
-          
-          const tab = tabs[0];
-          if (!tab.url.includes("tesla.com")) {
-            sendResponse({ status: "error", message: "Not on a Tesla page" });
-            return;
-          }
-          
-          try {
-            // Use our retry method to ensure the content script is injected
-            const response = await this.sendMessageWithRetry(tab.id, request);
-            sendResponse(response);
-          } catch (err) {
-            console.error("Error sending message to tab:", err);
-            sendResponse({ status: "error", message: err.message });
-          }
-        });
-        
-        return true; // Keep message channel open for async response
-      }
-    });
-    
-    // Set up polling with a reasonable interval
-    chrome.runtime.onInstalled.addListener(() => {
-      // Run an initial poll
-      this.runPoll();
-      
-      // Then set up recurring polls - 5 minutes is reasonable
-      chrome.alarms.create("poll", { 
-        periodInMinutes: 5,
-        delayInMinutes: 1
-      });
-    });
-
-    // Listen for alarm
+    // Listen for alarm events
     chrome.alarms.onAlarm.addListener(alarm => {
-      if (alarm.name === "poll") {
-        this.runPoll();
+      if (alarm.name === this.activeAlarm) {
+        this.checkInventory();
       }
     });
     
-    // Add tab update listener to ensure content script is injected
-    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-      // Only run when the tab is fully loaded
-      if (changeInfo.status === 'complete' && tab.url && tab.url.includes('tesla.com')) {
-        console.log("Tesla page loaded, ensuring content script is injected:", tab.url);
-        this.injectContentScriptIfNeeded(tabId);
+    // Listen for notification clicks
+    chrome.notifications.onClicked.addListener(notificationId => {
+      if (notificationId === "tesla-inventory-find") {
+        this.openInventoryPage();
       }
     });
+    
+    // Restore monitoring state if active
+    chrome.storage.sync.get(["isMonitoring", "monitoringFilters", "monitoringInterval"], data => {
+      if (data.isMonitoring && data.monitoringFilters) {
+        this.startMonitoring(data.monitoringFilters, data.monitoringInterval || this.DEFAULT_POLL_INTERVAL);
+      }
+    });
+  },
+  
+  /**
+   * Open the inventory page
+   */
+  async openInventoryPage() {
+    try {
+      // Get monitoring filters
+      const { monitoringFilters } = await chrome.storage.sync.get("monitoringFilters");
+      
+      if (!monitoringFilters) {
+        console.error("No monitoring filters defined");
+        return;
+      }
+      
+      // Get region and model
+      const region = monitoringFilters.region || "US";
+      const model = monitoringFilters.model || "my";
+      
+      // Get region configuration
+      const regionConfig = TeslaInventoryService.REGION_CONFIGS[region] || TeslaInventoryService.REGION_CONFIGS.US;
+      
+      // Construct the URL
+      let url = `${regionConfig.baseUrl}/inventory/new/${model}`;
+      
+      // Add parameters
+      const params = new URLSearchParams();
+      
+      if (monitoringFilters.priceMax) {
+        params.append("price", monitoringFilters.priceMax);
+      }
+      
+      if (monitoringFilters.zip) {
+        params.append("zip", monitoringFilters.zip);
+      }
+      
+      if (monitoringFilters.range) {
+        params.append("range", monitoringFilters.range);
+      }
+      
+      // Add parameters to URL if any exist
+      const paramsString = params.toString();
+      if (paramsString) {
+        url += `?${paramsString}`;
+      }
+      
+      // Open the URL in a new tab
+      chrome.tabs.create({ url });
+      
+      // Clear the badge
+      chrome.action.setBadgeText({ text: "" });
+    } catch (error) {
+      console.error("Error opening inventory page:", error);
+    }
   }
 };
 
-// Initialize the app
-AppController.initialize();
+// Initialize the inventory monitor
+InventoryMonitor.initialize();

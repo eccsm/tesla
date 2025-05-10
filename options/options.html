@@ -71,8 +71,26 @@
       margin-bottom: 10px;
     }
     
-    .hidden {
-      display: none;
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #1f2937;
+        color: #f9fafb;
+      }
+      
+      .region-selector {
+        background-color: #374151;
+      }
+      
+      input, select {
+        background-color: #374151;
+        border-color: #4b5563;
+        color: #f9fafb;
+      }
+      
+      .save-status {
+        background-color: #064e3b;
+        color: #d1fae5;
+      }
     }
   </style>
 </head>
@@ -100,7 +118,7 @@
   <div class="section">
     <h2 id="account-details-heading">Account Details</h2>
     
-    <div class="form-group tc-field">
+    <div class="form-group tc-field" style="display: none;">
       <label for="tc">TCKN:</label>
       <input id="tc" type="text" placeholder="Turkish ID Number">
     </div>
@@ -171,7 +189,7 @@
     
     <div class="form-group">
       <label for="cardExp" id="card-exp-label">Expiration Date:</label>
-      <input id="cardExp" type="text">
+      <input id="cardExp" type="text" placeholder="MM/YY">
     </div>
     
     <div class="form-group">

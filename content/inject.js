@@ -1,8 +1,8 @@
 /**
- * Tesla AutoPilot Content Script
+ * Tesla AutoPilot Content Script - Fixed Version
  * 
- * This script uses a URL-based approach for filtering inventory
- * rather than manipulating Tesla's UI elements directly.
+ * This script uses an improved field detection system to properly
+ * fill out Tesla order forms despite their complex structure.
  */
 
 // Configuration
@@ -18,7 +18,8 @@ const CONFIG = {
     MODEL_3: 'm3',
     MODEL_Y: 'my',
     MODEL_S: 'ms',
-    MODEL_X: 'mx'
+    MODEL_X: 'mx',
+    CYBERTRUCK: 'ct'
   }
 };
 
@@ -107,266 +108,232 @@ const Helpers = {
   }
 };
 
-// Complete Tesla Order Form Handler
+// Improved Tesla Order Form Handler
 const FormHandler = {
   /**
-   * Enhanced field selector that targets all Tesla checkout fields
+   * Enhanced field selector with adaptive detection for Tesla's forms
    * @param {string} fieldName - Field identifier
    * @returns {HTMLElement|null} Field element if found
    */
   getField(fieldName) {
-    // Tesla-specific selectors based on the screenshots
+    // Specific selectors for the Tesla order page structure
     const teslaSelectors = {
       // Account Details
       first: [
-        'input[aria-label="First Name"]',
-        'input[placeholder="First Name"]',
+        '#FIRST_NAME',
         'input[name="firstName"]',
-        'div:contains("First Name") input'
+        'input[data-id="first-name-textbox"]',
+        'input[placeholder="First Name"]',
+        'input[aria-label="First Name"]'
       ],
       last: [
-        'input[aria-label="Last Name"]',
-        'input[placeholder="Last Name"]',
+        '#LAST_NAME',
         'input[name="lastName"]',
-        'div:contains("Last Name") input'
+        'input[data-id="last-name-textbox"]',
+        'input[placeholder="Last Name"]',
+        'input[aria-label="Last Name"]'
       ],
       email: [
-        'input[aria-label="Email Address"]',
-        'input[placeholder="Email Address"]',
+        '#EMAIL',
         'input[name="email"]',
+        'input[data-id="email-textbox"]',
         'input[type="email"]',
-        'div:contains("Email Address") input'
+        'input[placeholder*="Email"]',
+        'input[aria-label*="Email"]'
       ],
       emailConfirm: [
-        'input[aria-label="Confirm Email Address"]',
-        'input[placeholder="Confirm Email Address"]',
-        'input[name="confirmEmail"]',
-        'div:contains("Confirm Email") input'
+        '#EMAIL_CONFIRM',
+        'input[name="emailConfirm"]',
+        'input[data-id="confirm-email-textbox"]',
+        'input[placeholder*="Confirm Email"]',
+        'input[aria-label*="Confirm Email"]'
       ],
       phone: [
-        'input[aria-label="Mobile Phone Number"]',
-        'input[placeholder="Mobile Phone Number"]',
+        '#PHONE_NUMBER',
+        'input[name="phoneNumber"]',
+        'input[data-id="phone-number-textbox"]',
         'input[type="tel"]',
-        'div:contains("Mobile Phone") input'
+        'input[inputmode="tel"]',
+        'input[placeholder*="Phone"]',
+        'input[aria-label*="Phone"]'
       ],
       
       // Shipping Address
       addr1: [
-        'input[aria-label="Address"]',
-        'input[placeholder="Address"]',
+        '#accessories-shipping',
+        'input[name="shipping-address"]',
         'input[name="address1"]',
-        'div:contains("Address") input',
-        'div:contains("shipping address") input'
+        'input[name="addressLine1"]',
+        'input[placeholder*="Enter shipping address"]',
+        'input[placeholder*="Address"]',
+        'input[aria-label*="Address"]'
       ],
       addr2: [
-        'input[aria-label="Apartment, Suite, etc (optional)"]',
-        'input[placeholder="Apartment, Suite, etc (optional)"]',
+        '#accessories-line-2',
         'input[name="address2"]',
-        'div:contains("Apartment") input',
-        'div:contains("Suite") input'
+        'input[name="addressLine2"]',
+        'input[placeholder*="Apartment"]',
+        'input[placeholder*="Suite"]',
+        'input[aria-label*="Apartment"]'
       ],
       
-      // Payment Information
+      // Payment Information - Note: These likely won't work due to iframe
       cardName: [
-        'input[aria-label="Name on Card"]',
-        'input[placeholder="Name on Card"]',
-        'div:contains("Name on Card") input'
+        'input[name="ccName"]',
+        'input[name="nameOnCard"]',
+        'input[placeholder*="Name on Card"]',
+        'input[aria-label*="Name on Card"]'
       ],
       cardNumber: [
-        'input[aria-label="Card Number"]',
-        'input[placeholder="Card Number"]',
-        'div:contains("Card Number") input'
+        'input[name="ccNumber"]',
+        'input[name="cardNumber"]',
+        'input[placeholder*="Card Number"]',
+        'input[aria-label*="Card Number"]'
       ],
       cardExpMonth: [
-        'select[aria-label="Expiration Month"]',
-        'select[name="expMonth"]',
-        'div:contains("Expiration Month") select'
+        'select[name="ccExpMonth"]',
+        'select[aria-label*="Month"]',
+        'select[id*="month"]'
       ],
       cardExpYear: [
-        'select[aria-label="Expiration Year"]',
-        'select[name="expYear"]',
-        'div:contains("Expiration Year") select'
+        'select[name="ccExpYear"]',
+        'select[aria-label*="Year"]',
+        'select[id*="year"]'
       ],
       cardCVV: [
-        'input[aria-label="Security Code"]',
-        'input[placeholder="Security Code"]',
-        'div:contains("Security Code") input'
+        'input[name="ccCvv"]',
+        'input[name="cvv"]',
+        'input[placeholder*="Security Code"]',
+        'input[placeholder*="CVV"]',
+        'input[aria-label*="Security Code"]'
       ],
       zip: [
-        'input[aria-label="Billing ZIP Code"]',
-        'input[placeholder="Billing ZIP Code"]',
-        'div:contains("Billing ZIP") input'
+        'input[name="billingZip"]',
+        'input[name="postalCode"]',
+        'input[placeholder*="ZIP"]',
+        'input[placeholder*="Postal"]',
+        'input[aria-label*="ZIP"]'
       ]
     };
     
-    // Try the Tesla-specific selectors first
+    // Try each selector for the field
     if (teslaSelectors[fieldName]) {
       for (const selector of teslaSelectors[fieldName]) {
         try {
-          // Handle :contains pseudo-selector
-          if (selector.includes(':contains(')) {
-            // Extract the element type and text to match
-            const match = selector.match(/([\w-]+):contains\("([^"]+)"\)(.*)/);
-            if (match) {
-              const [_, elementType, textToMatch, remainingSelector] = match;
-              
-              // Find all elements of this type
-              const elements = document.querySelectorAll(elementType);
-              
-              // Find elements containing the text
-              for (const element of elements) {
-                if (element.textContent.includes(textToMatch)) {
-                  // Found a match - handle remaining selector
-                  if (remainingSelector.includes('input')) {
-                    // Find input field
-                    const inputs = element.querySelectorAll('input');
-                    if (inputs.length > 0) {
-                      return inputs[0]; // Return the first input
-                    }
-                  } else if (remainingSelector.includes('select')) {
-                    // Find select field
-                    const selects = element.querySelectorAll('select');
-                    if (selects.length > 0) {
-                      return selects[0]; // Return the first select
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            // Standard selector
-            const element = document.querySelector(selector);
-            if (element) return element;
+          const element = document.querySelector(selector);
+          if (element) {
+            console.log(`Found field '${fieldName}' with selector: ${selector}`);
+            return element;
           }
         } catch (err) {
-          console.warn(`Error with selector "${selector}":`, err);
+          console.log(`Error with selector "${selector}":`, err);
         }
       }
     }
     
-    // If the specific selectors failed, use a more thorough approach
+    // If specific selectors failed, use a more general approach
     return this.findFieldByLabels(fieldName);
   },
   
   /**
-   * Find a field by looking at nearby labels and text
+   * Advanced method to find fields by looking for text labels near them
    * @param {string} fieldName - Field to find
    * @returns {HTMLElement|null} - Field element if found
    */
   findFieldByLabels(fieldName) {
-    // Labels to look for each field type
+    // Labels to look for each field type in multiple languages
     const fieldLabels = {
-      first: ['First Name', 'First'],
-      last: ['Last Name', 'Last'],
-      email: ['Email Address', 'Email'],
-      emailConfirm: ['Confirm Email Address', 'Confirm Email'],
-      phone: ['Mobile Phone Number', 'Phone Number', 'Phone'],
-      addr1: ['Address', 'Street Address', 'Enter shipping address'],
-      addr2: ['Apartment', 'Suite', 'Apt', 'Unit'],
-      cardName: ['Name on Card'],
-      cardNumber: ['Card Number'],
-      cardExpMonth: ['Expiration Month'],
-      cardExpYear: ['Expiration Year'],
-      cardCVV: ['Security Code', 'CVV', 'CVC'],
-      zip: ['Billing ZIP Code', 'ZIP Code', 'Postal Code']
+      first: ['First Name', 'First', 'Ad', 'İsim'],
+      last: ['Last Name', 'Last', 'Soyad', 'Soyadı'],
+      email: ['Email Address', 'Email', 'E-posta', 'E-mail'],
+      emailConfirm: ['Confirm Email Address', 'Confirm Email', 'E-posta Doğrulama'],
+      phone: ['Mobile Phone Number', 'Phone Number', 'Phone', 'Telefon', 'Cep Telefonu'],
+      addr1: ['Address', 'Street Address', 'Adres', 'Sokak Adresi', 'Shipping'],
+      addr2: ['Apartment', 'Suite', 'Apt', 'Unit', 'Daire', 'optional'],
+      cardName: ['Name on Card', 'Kart Üzerindeki İsim'],
+      cardNumber: ['Card Number', 'Kart Numarası'],
+      cardExpMonth: ['Expiration Month', 'Son Kullanma Ay'],
+      cardExpYear: ['Expiration Year', 'Son Kullanma Yıl'],
+      cardCVV: ['Security Code', 'CVV', 'CVC', 'Güvenlik Kodu'],
+      zip: ['ZIP Code', 'Postal Code', 'Posta Kodu']
     };
     
     const labelsToFind = fieldLabels[fieldName] || [];
     if (labelsToFind.length === 0) return null;
     
-    // Find all visible elements containing these labels
-    const allElements = document.querySelectorAll('*');
-    const matchingElements = [];
-    
-    for (const element of allElements) {
-      // Skip non-visible elements
-      const style = window.getComputedStyle(element);
-      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+    // Method 1: Find based on standard label elements
+    for (const labelText of labelsToFind) {
+      // Find all label elements
+      const labels = Array.from(document.querySelectorAll('label'));
       
-      // Skip script and style elements
-      if (element.tagName === 'SCRIPT' || element.tagName === 'STYLE') continue;
-      
-      // Check if element contains the label text
-      const text = element.textContent.trim();
-      if (text && labelsToFind.some(label => text.includes(label))) {
-        matchingElements.push(element);
+      for (const label of labels) {
+        if (label.textContent.includes(labelText)) {
+          // If the label has a 'for' attribute, use it
+          if (label.htmlFor) {
+            const field = document.getElementById(label.htmlFor);
+            if (field) return field;
+          }
+          
+          // Look for input inside the label or in siblings
+          const input = label.querySelector('input, select') || 
+                       label.nextElementSibling?.querySelector('input, select');
+          if (input) return input;
+        }
       }
     }
     
-    // For each matching element, look for input/select field
-    for (const element of matchingElements) {
-      // 1. Check for inputs directly inside
-      const inputs = element.querySelectorAll('input, select');
-      if (inputs.length > 0) return inputs[0];
+    // Method 2: Find based on text near inputs
+    for (const labelText of labelsToFind) {
+      // Get all elements with text matching our label
+      const allTextElements = Array.from(document.querySelectorAll('*'));
+      const elementsWithText = allTextElements.filter(el => 
+        el.childNodes.length === 1 && 
+        el.childNodes[0].nodeType === Node.TEXT_NODE && 
+        el.textContent.includes(labelText)
+      );
       
-      // 2. Check the next element
-      let nextElement = element.nextElementSibling;
-      while (nextElement) {
-        const inputs = nextElement.querySelectorAll('input, select');
-        if (inputs.length > 0) return inputs[0];
-        nextElement = nextElement.nextElementSibling;
-      }
-      
-      // 3. Check the parent's next children
-      const parent = element.parentElement;
-      if (parent) {
-        const siblings = Array.from(parent.children);
-        const currentIndex = siblings.indexOf(element);
+      // For each element with matching text, look for nearby inputs
+      for (const element of elementsWithText) {
+        // First, check siblings
+        let sibling = element.nextElementSibling;
+        while (sibling) {
+          const input = sibling.querySelector('input, select');
+          if (input) return input;
+          sibling = sibling.nextElementSibling;
+        }
         
-        for (let i = currentIndex + 1; i < siblings.length; i++) {
-          const inputs = siblings[i].querySelectorAll('input, select');
+        // Check parent's children
+        const parent = element.parentElement;
+        if (parent) {
+          const inputs = parent.querySelectorAll('input, select');
+          if (inputs.length > 0) return inputs[0];
+        }
+        
+        // Check grandparent's children
+        const grandparent = parent?.parentElement;
+        if (grandparent) {
+          const inputs = grandparent.querySelectorAll('input, select');
           if (inputs.length > 0) return inputs[0];
         }
       }
     }
     
-    // If all else fails, try some field-specific strategies
+    // Method 3: Look for inputs of the expected type
     switch (fieldName) {
-      case 'first':
-        // First name is often the first text input on the form
-        return document.querySelector('input[type="text"]');
-        
-      case 'cardExpMonth':
-        // First select element after "Expiration" text
-        const monthLabels = document.querySelectorAll('div:contains("Expiration"), span:contains("Expiration")');
-        for (const label of monthLabels) {
-          const selects = document.querySelectorAll('select');
-          // First select after the expiration label
-          for (const select of selects) {
-            if (select.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_PRECEDING) {
-              return select;
-            }
-          }
-        }
-        // First select on the page as fallback
-        return document.querySelector('select');
-        
-      case 'cardExpYear':
-        // Second select element after "Expiration" text
-        const yearLabels = document.querySelectorAll('div:contains("Expiration"), span:contains("Expiration")');
-        for (const label of yearLabels) {
-          const selects = document.querySelectorAll('select');
-          // First select after the expiration label
-          let found = false;
-          for (const select of selects) {
-            if (select.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_PRECEDING) {
-              if (found) return select; // Return the second select
-              found = true;
-            }
-          }
-        }
-        // Second select on the page as fallback
-        const selects = document.querySelectorAll('select');
-        if (selects.length > 1) return selects[1];
-        break;
+      case 'email':
+        return document.querySelector('input[type="email"]');
+      case 'phone':
+        return document.querySelector('input[type="tel"]');
+      case 'cardNumber':
+        return document.querySelector('input[pattern*="[0-9]"]');
     }
     
-    console.warn(`Could not find field: ${fieldName}`);
+    console.log(`Could not find field: ${fieldName}`);
     return null;
   },
   
   /**
-   * Fill a form field safely with enhanced event triggering
+   * Improved field filling with retry logic
    * @param {HTMLElement} field - Field element
    * @param {string} value - Value to set
    * @returns {boolean} Success status
@@ -375,27 +342,35 @@ const FormHandler = {
     if (!field || !value) return false;
     
     try {
-      // Focus the field first
-      field.focus();
-      
       // For select elements, handle differently
       if (field.tagName === 'SELECT') {
         return this.fillSelectField(field, value);
       }
       
-      // For input fields, set value and trigger events
-      field.value = '';  // Clear first
+      // Clear the field first - very important for validation
+      field.value = '';
       field.dispatchEvent(new Event('input', { bubbles: true }));
       
-      // Type the value character by character to better simulate user typing
-      for (let i = 0; i < value.length; i++) {
-        field.value += value.charAt(i);
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      
-      // Trigger final events
+      // For text inputs, set value and trigger events
+      field.value = value;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
       field.dispatchEvent(new Event('change', { bubbles: true }));
       field.dispatchEvent(new Event('blur', { bubbles: true }));
+      
+      // Verify the value was set
+      if (field.value !== value) {
+        console.log(`Value not set for field, trying alternate method`);
+        
+        // Try an alternate approach with Object.getOwnPropertyDescriptor
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(field, value);
+        }
+        
+        // Trigger events again
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       
       console.log(`Successfully filled field:`, field);
       return true;
@@ -406,7 +381,7 @@ const FormHandler = {
   },
   
   /**
-   * Fill a select dropdown field
+   * Improved select field filling with better option matching
    * @param {HTMLSelectElement} field - Select element 
    * @param {string} value - Value to select
    * @returns {boolean} Success status
@@ -416,9 +391,7 @@ const FormHandler = {
       const options = Array.from(field.options);
       let match = null;
       
-      // Try different strategies to find the matching option
-      
-      // 1. Exact value match
+      // Strategy 1: Direct value match
       match = options.find(opt => opt.value === value);
       if (match) {
         field.value = match.value;
@@ -426,40 +399,21 @@ const FormHandler = {
         return true;
       }
       
-      // 2. Exact text match
-      match = options.find(opt => opt.text === value);
+      // Strategy 2: Text content match
+      match = options.find(opt => opt.text === value || opt.text.includes(value));
       if (match) {
         field.value = match.value;
         field.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       }
       
-      // 3. Case-insensitive text partial match
-      match = options.find(opt => 
-        opt.text.toLowerCase().includes(value.toLowerCase())
-      );
-      if (match) {
-        field.value = match.value;
-        field.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      }
-      
-      // 4. Numeric match (for expiration dates)
-      const numValue = parseInt(value, 10);
-      if (!isNaN(numValue)) {
-        // Try to match by number value
+      // Strategy 3: Numeric match for expiration dates
+      if (!isNaN(parseInt(value))) {
+        const numValue = parseInt(value);
         match = options.find(opt => {
-          const optNum = parseInt(opt.value, 10);
+          const optNum = parseInt(opt.value);
           return !isNaN(optNum) && optNum === numValue;
         });
-        
-        if (!match) {
-          // Try to match by text as number
-          match = options.find(opt => {
-            const optNum = parseInt(opt.text, 10);
-            return !isNaN(optNum) && optNum === numValue;
-          });
-        }
         
         if (match) {
           field.value = match.value;
@@ -468,86 +422,54 @@ const FormHandler = {
         }
       }
       
-      // 5. Handle MM/YY format for expiration dates
+      // Strategy 4: MM/YY format handling
       if (value.includes('/')) {
-        const parts = value.split('/');
+        const [month, year] = value.split('/');
+        
         if (field.id.toLowerCase().includes('month') || field.name.toLowerCase().includes('month')) {
-          // Get month part
-          const month = parseInt(parts[0], 10);
-          if (!isNaN(month)) {
-            match = options.find(opt => {
-              const optNum = parseInt(opt.value, 10);
-              return !isNaN(optNum) && optNum === month;
-            });
-            
-            if (match) {
-              field.value = match.value;
-              field.dispatchEvent(new Event('change', { bubbles: true }));
-              return true;
-            }
-          }
-        } else if (field.id.toLowerCase().includes('year') || field.name.toLowerCase().includes('year')) {
-          // Get year part
-          let year = parseInt(parts[1], 10);
-          if (!isNaN(year)) {
-            // Convert 2-digit year to 4-digit
-            if (year < 100) year += 2000;
-            
-            match = options.find(opt => {
-              const optNum = parseInt(opt.value, 10);
-              return !isNaN(optNum) && optNum === year;
-            });
-            
-            if (match) {
-              field.value = match.value;
-              field.dispatchEvent(new Event('change', { bubbles: true }));
-              return true;
-            }
-          }
-        }
-      }
-      
-      // 6. Specific handling for expiration fields
-      if (field.id.toLowerCase().includes('month') || field.name.toLowerCase().includes('month')) {
-        // Try to find any valid month
-        for (let month = 1; month <= 12; month++) {
-          match = options.find(opt => {
-            // Try both numeric value and text
-            return opt.value == month || opt.text.includes(month.toString());
+          // Try to set month
+          const monthOptions = options.find(opt => {
+            const monthNum = parseInt(month);
+            if (isNaN(monthNum)) return false;
+            return opt.value == monthNum || opt.text.includes(monthNum.toString());
           });
           
-          if (match) {
-            field.value = match.value;
+          if (monthOptions) {
+            field.value = monthOptions.value;
             field.dispatchEvent(new Event('change', { bubbles: true }));
             return true;
           }
         }
-      } else if (field.id.toLowerCase().includes('year') || field.name.toLowerCase().includes('year')) {
-        // Find current year or next available
-        const currentYear = new Date().getFullYear();
-        for (let year = currentYear; year <= currentYear + 10; year++) {
-          match = options.find(opt => 
-            opt.value == year || opt.text.includes(year.toString())
-          );
+        
+        if (field.id.toLowerCase().includes('year') || field.name.toLowerCase().includes('year')) {
+          // Try to set year (handle 2-digit vs 4-digit)
+          let fullYear = parseInt(year);
+          if (fullYear < 100) fullYear += 2000;
           
-          if (match) {
-            field.value = match.value;
+          const yearOption = options.find(opt => {
+            return opt.value == fullYear || 
+                  opt.value == year || 
+                  opt.text.includes(fullYear.toString()) || 
+                  opt.text.includes(year);
+          });
+          
+          if (yearOption) {
+            field.value = yearOption.value;
             field.dispatchEvent(new Event('change', { bubbles: true }));
             return true;
           }
         }
       }
       
-      // 7. Last resort - select first non-empty option
-      match = options.find(opt => opt.value && !opt.disabled);
-      if (match) {
-        field.value = match.value;
+      // Strategy 5: Select first non-empty option as fallback
+      const firstOption = options.find(opt => opt.value && !opt.disabled);
+      if (firstOption) {
+        field.value = firstOption.value;
         field.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log(`Selected first available option: ${match.text}`);
+        console.log(`Selected first available option: ${firstOption.text}`);
         return true;
       }
       
-      console.warn(`Could not find a suitable option for value: ${value}`);
       return false;
     } catch (e) {
       console.error(`Error filling select field:`, e);
@@ -588,14 +510,43 @@ const FormHandler = {
   },
   
   /**
-   * Fill form with user data - enhanced for Tesla's order form
+   * Fix validation errors in form fields to prevent failures
+   */
+  fixValidationErrors() {
+    try {
+      // Fix email field if it contains address data
+      const emailField = document.querySelector('#EMAIL, input[name="email"], input[data-id="email-textbox"]');
+      if (emailField && !emailField.value.includes('@')) {
+        console.log('Fixing invalid email field with value:', emailField.value);
+        emailField.value = '';
+        emailField.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      // Fix other potential validation issues
+      const phoneField = document.querySelector('#PHONE_NUMBER, input[name="phoneNumber"], input[data-id="phone-number-textbox"]');
+      if (phoneField && phoneField.value && phoneField.value.length < 3) {
+        console.log('Fixing potentially invalid phone field');
+        phoneField.value = '';
+        phoneField.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    } catch (e) {
+      console.error('Error fixing validation errors:', e);
+    }
+  },
+  
+  /**
+   * Fill form with user data - enhanced with validation fixing and better field targeting
    * @returns {Promise<{count: number, fields: string[]}>} Details of filled fields
    */
   async fillForm() {
     let filledCount = 0;
     const filledFields = [];
+    const failedFields = [];
     
     try {
+      // First fix any validation errors
+      this.fixValidationErrors();
+      
       // Get user data
       const userData = await new Promise(resolve => {
         chrome.storage.sync.get(null, data => {
@@ -605,7 +556,7 @@ const FormHandler = {
       
       console.log('Retrieved user data for form filling:', Object.keys(userData));
       
-      // Define field mapping - use emailConfirm for confirmation fields
+      // Define field mapping
       const fieldMapping = {
         // Account details
         'first': 'first',
@@ -625,41 +576,56 @@ const FormHandler = {
         'zip': 'zip'
       };
       
+      // Get current region for regional adaptations
+      const { region = "US" } = await chrome.storage.sync.get(["region"]);
+      
       // Fill each field with a delay between them
       for (const [fieldId, dataKey] of Object.entries(fieldMapping)) {
         if (userData[dataKey]) {
+          // Add a random delay to seem more human-like
+          await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 300));
+          
           const field = this.getField(fieldId);
-          if (field && this.fillField(field, userData[dataKey])) {
-            filledCount++;
-            filledFields.push(fieldId);
-            
-            // Add delay between fields (200-300ms)
-            await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
+          if (field) {
+            if (this.fillField(field, userData[dataKey])) {
+              filledCount++;
+              filledFields.push(fieldId);
+            } else {
+              failedFields.push(fieldId);
+              console.log(`Failed to fill field: ${fieldId}`);
+            }
+          } else {
+            failedFields.push(fieldId);
+            console.log(`Field not found: ${fieldId}`);
           }
         }
       }
       
-      // Special handling for expiration date (might be one field or two separate fields)
+      // Special handling for expiration date
       if (userData.cardExp) {
         const { month, year } = this.parseExpirationDate(userData.cardExp);
         
         // Try to fill month field
         if (month) {
+          await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
           const monthField = this.getField('cardExpMonth');
           if (monthField && this.fillField(monthField, month)) {
             filledCount++;
             filledFields.push('cardExpMonth');
-            await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
+          } else {
+            failedFields.push('cardExpMonth');
           }
         }
         
         // Try to fill year field
         if (year) {
+          await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
           const yearField = this.getField('cardExpYear');
           if (yearField && this.fillField(yearField, year)) {
             filledCount++;
             filledFields.push('cardExpYear');
-            await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
+          } else {
+            failedFields.push('cardExpYear');
           }
         }
       }
@@ -672,16 +638,30 @@ const FormHandler = {
       }
       
       console.log(`Form filling complete. Filled ${filledCount} fields:`, filledFields.join(', '));
+      console.log(`Failed to fill ${failedFields.length} fields:`, failedFields.join(', '));
+      
+      // If some fields failed, attempt to explain why
+      if (failedFields.length > 0) {
+        // Check if payment fields failed - these are likely in an iframe
+        const paymentFields = ['cardName', 'cardNumber', 'cardCVV', 'cardExpMonth', 'cardExpYear'];
+        const failedPaymentFields = failedFields.filter(f => paymentFields.includes(f));
+        
+        if (failedPaymentFields.length > 0) {
+          console.log('Note: Payment fields are likely in a secure iframe and cannot be accessed directly.');
+        }
+      }
       
       return {
         count: filledCount,
-        fields: filledFields
+        fields: filledFields,
+        failedFields: failedFields
       };
     } catch (e) {
       console.error('Error filling form:', e);
       return {
         count: filledCount,
         fields: filledFields,
+        failedFields: failedFields,
         error: e.message
       };
     }
@@ -697,15 +677,24 @@ const FormHandler = {
     
     checkboxes.forEach(checkbox => {
       // Only check boxes that are likely agreement checkboxes
-      // Don't check boxes that seem like product options
       if (this.isLikelyAgreementCheckbox(checkbox) && !checkbox.checked) {
         try {
-          checkbox.checked = true;
-          checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-          checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+          // Try clicking the checkbox directly (more reliable than setting .checked)
+          checkbox.click();
           checkedCount++;
+          console.log("Checked agreement checkbox");
         } catch (e) {
-          console.error(`Error checking checkbox:`, e);
+          console.error(`Error clicking checkbox:`, e);
+          
+          // Fallback to programmatic setting
+          try {
+            checkbox.checked = true;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+            checkedCount++;
+          } catch (e2) {
+            console.error(`Fallback checkbox checking failed:`, e2);
+          }
         }
       }
     });
@@ -714,7 +703,7 @@ const FormHandler = {
   },
   
   /**
-   * Determine if a checkbox is likely an agreement/terms checkbox
+   * Improved checkbox detection that handles multiple languages
    * @param {HTMLInputElement} checkbox - The checkbox to evaluate
    * @returns {boolean} Whether it's likely an agreement checkbox
    */
@@ -727,24 +716,22 @@ const FormHandler = {
       checkboxText = checkbox.labels[0].textContent;
     }
     
-    // Check for nearby text nodes
+    // Check for nearby text nodes in parent elements (up to 3 levels)
     if (!checkboxText) {
-      const parent = checkbox.parentElement;
-      if (parent) {
-        checkboxText = parent.textContent;
+      let element = checkbox.parentElement;
+      for (let i = 0; i < 3 && element; i++) {
+        checkboxText = element.textContent;
+        if (checkboxText) break;
+        element = element.parentElement;
       }
     }
     
-    // Check if it's near terms-related text
-    if (!checkboxText) {
-      const nextSibling = checkbox.nextElementSibling;
-      if (nextSibling) {
-        checkboxText = nextSibling.textContent;
-      }
-    }
-    
-    // Look for terms-related keywords
-    const termsKeywords = ['agree', 'consent', 'terms', 'conditions', 'privacy', 'policy', 'subscribe', 'newsletter', 'accept'];
+    // Check for terms-related keywords in multiple languages
+    const termsKeywords = [
+      'agree', 'consent', 'terms', 'conditions', 'privacy', 'policy', 
+      'subscribe', 'newsletter', 'accept', 'update', 'purchase', 
+      'kabul', 'onay', 'şartlar', 'koşullar', 'gizlilik', 'abone'
+    ];
     
     // Check if any keyword is present
     for (const keyword of termsKeywords) {
@@ -761,12 +748,7 @@ const FormHandler = {
       }
     }
     
-    // If we couldn't determine if it's a terms checkbox, default to true if it's alone
-    // or not part of a group of checkboxes (like in a product options list)
-    const nearbyCheckboxCount = checkbox.parentElement ? 
-      checkbox.parentElement.querySelectorAll('input[type="checkbox"]').length : 0;
-      
-    return nearbyCheckboxCount <= 1;
+    return false;
   }
 };
 
@@ -798,7 +780,7 @@ const PanelUI = {
   },
   
   /**
-   * Create panel for order pages
+   * Enhanced order panel with debugging options
    * @param {HTMLElement} panel - Panel element
    */
   async createOrderPanel(panel) {
@@ -818,6 +800,7 @@ const PanelUI = {
       </div>
       
       <button class="btn" id="fill-form-btn">Fill Form</button>
+      <button class="btn" id="fix-validation-btn">Fix Validation Errors</button>
       <button class="btn" id="check-terms-btn">Check Terms</button>
       
       <div id="panel-status" class="status"></div>
@@ -829,122 +812,132 @@ const PanelUI = {
     });
     
     panel.querySelector('#fill-form-btn').addEventListener('click', async () => {
-      const count = await FormHandler.fillForm();
-      this.showStatus(panel, `${count} fields filled successfully!`, true);
+      const result = await FormHandler.fillForm();
+      this.showStatus(panel, `${result.count} fields filled successfully!`, true);
+      
+      // Show info about failed fields if any
+      if (result.failedFields && result.failedFields.length > 0) {
+        setTimeout(() => {
+          const paymentFields = ['cardName', 'cardNumber', 'cardCVV', 'cardExpMonth', 'cardExpYear'];
+          const failedPaymentFields = result.failedFields.filter(f => paymentFields.includes(f));
+          
+          if (failedPaymentFields.length > 0) {
+            this.showStatus(panel, `Payment fields are in a secure iframe - fill manually`, false);
+          } else {
+            this.showStatus(panel, `Some fields not found: ${result.failedFields.join(', ')}`, false);
+          }
+        }, 3000);
+      }
+    });
+    
+    panel.querySelector('#fix-validation-btn').addEventListener('click', () => {
+      FormHandler.fixValidationErrors();
+      this.showStatus(panel, `Fixed validation errors`, true);
     });
     
     panel.querySelector('#check-terms-btn').addEventListener('click', () => {
       // Check all checkboxes
-      let count = 0;
-      document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-        if (!checkbox.checked) {
-          checkbox.checked = true;
-          checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-          count++;
-        }
-      });
-      
+      let count = FormHandler.checkRelevantCheckboxes();
       this.showStatus(panel, `${count} checkboxes checked`, true);
     });
   },
   
-/**
- * Create panel for inventory pages with improved price filtering
- * @param {HTMLElement} panel - Panel element
- */
-async createInventoryPanel(panel) {
-  // Get current URL params
-  const params = Helpers.getUrlParams();
-  const currentPrice = params.get(CONFIG.URL_PARAMS.PRICE) || '';
-  const currentRange = params.get(CONFIG.URL_PARAMS.RANGE) || '0';
-  
-  // Get user settings
-  const settings = await Helpers.getUserSettings();
-  
-  // Create panel HTML
-  panel.innerHTML = `
-    <div class="header">
-      <h2>Tesla AutoPilot</h2>
-      <button class="btn-ghost" id="tesla-panel-close">×</button>
-    </div>
+  /**
+   * Create panel for inventory pages with improved price filtering
+   * @param {HTMLElement} panel - Panel element
+   */
+  async createInventoryPanel(panel) {
+    // Get current URL params
+    const params = Helpers.getUrlParams();
+    const currentPrice = params.get(CONFIG.URL_PARAMS.PRICE) || '';
+    const currentRange = params.get(CONFIG.URL_PARAMS.RANGE) || '0';
     
-    <div class="form-group">
-      <label for="panel-price">Price Limit:</label>
-      <input type="number" id="panel-price" value="${settings.priceFloor || currentPrice}">
-    </div>
+    // Get user settings
+    const settings = await Helpers.getUserSettings();
     
-    <div class="form-group">
-      <label for="panel-range">Range (miles):</label>
-      <input type="number" id="panel-range" value="${settings.rangeMiles || currentRange}">
-    </div>
+    // Create panel HTML
+    panel.innerHTML = `
+      <div class="header">
+        <h2>Tesla AutoPilot</h2>
+        <button class="btn-ghost" id="tesla-panel-close">×</button>
+      </div>
+      
+      <div class="form-group">
+        <label for="panel-price">Price Limit:</label>
+        <input type="number" id="panel-price" value="${settings.priceFloor || currentPrice}">
+      </div>
+      
+      <div class="form-group">
+        <label for="panel-range">Range (miles):</label>
+        <input type="number" id="panel-range" value="${settings.rangeMiles || currentRange}">
+      </div>
+      
+      <div class="form-group">
+        <label for="panel-payment">Payment Type:</label>
+        <select id="panel-payment">
+          <option value="cash" ${params.get(CONFIG.URL_PARAMS.PAYMENT_TYPE) === 'cash' ? 'selected' : ''}>Cash</option>
+          <option value="loan" ${params.get(CONFIG.URL_PARAMS.PAYMENT_TYPE) === 'loan' ? 'selected' : ''}>Loan</option>
+          <option value="lease" ${params.get(CONFIG.URL_PARAMS.PAYMENT_TYPE) === 'lease' ? 'selected' : ''}>Lease</option>
+        </select>
+      </div>
+      
+      <button class="btn" id="apply-filters-btn">Apply Filters</button>
+      <button class="btn" id="save-settings-btn">Save Settings</button>
+      
+      <div id="panel-status" class="status"></div>
+    `;
     
-    <div class="form-group">
-      <label for="panel-payment">Payment Type:</label>
-      <select id="panel-payment">
-        <option value="cash" ${params.get(CONFIG.URL_PARAMS.PAYMENT_TYPE) === 'cash' ? 'selected' : ''}>Cash</option>
-        <option value="loan" ${params.get(CONFIG.URL_PARAMS.PAYMENT_TYPE) === 'loan' ? 'selected' : ''}>Loan</option>
-        <option value="lease" ${params.get(CONFIG.URL_PARAMS.PAYMENT_TYPE) === 'lease' ? 'selected' : ''}>Lease</option>
-      </select>
-    </div>
+    // Set up event handlers
+    panel.querySelector('#tesla-panel-close').addEventListener('click', () => {
+      panel.remove();
+    });
     
-    <button class="btn" id="apply-filters-btn">Apply Filters</button>
-    <button class="btn" id="save-settings-btn">Save Settings</button>
+    panel.querySelector('#apply-filters-btn').addEventListener('click', async () => {
+      try {
+        const price = panel.querySelector('#panel-price').value;
+        const range = panel.querySelector('#panel-range').value;
+        const paymentType = panel.querySelector('#panel-payment').value;
+        
+        // Save to storage first
+        await chrome.storage.sync.set({
+          priceFloor: price,
+          rangeMiles: range,
+          paymentType: paymentType
+        });
+        
+        // Show saving message
+        this.showStatus(panel, 'Applying filters...', true);
+        
+        // Then update URL - same approach as the model selector
+        const url = new URL(window.location.href);
+        url.searchParams.set('price', price);
+        url.searchParams.set('range', range || '0');
+        url.searchParams.set('PaymentType', paymentType);
+        url.searchParams.set('arrangeby', 'price');
+        
+        // Navigate to the new URL
+        window.location.href = url.toString();
+      } catch (error) {
+        console.error("Error applying filters:", error);
+        this.showStatus(panel, 'Error applying filters', false);
+      }
+    });
     
-    <div id="panel-status" class="status"></div>
-  `;
-  
-  // Set up event handlers
-  panel.querySelector('#tesla-panel-close').addEventListener('click', () => {
-    panel.remove();
-  });
-  
-  // FIXED: Apply Filters button now works like the model selector
-  panel.querySelector('#apply-filters-btn').addEventListener('click', async () => {
-    try {
+    panel.querySelector('#save-settings-btn').addEventListener('click', async () => {
       const price = panel.querySelector('#panel-price').value;
       const range = panel.querySelector('#panel-range').value;
       const paymentType = panel.querySelector('#panel-payment').value;
       
-      // Save to storage first
-      await chrome.storage.sync.set({
+      // Save to storage
+      chrome.storage.sync.set({
         priceFloor: price,
         rangeMiles: range,
         paymentType: paymentType
+      }, () => {
+        this.showStatus(panel, 'Settings saved successfully!', true);
       });
-      
-      // Show saving message
-      this.showStatus(panel, 'Applying filters...', true);
-      
-      // Then update URL - same approach as the model selector
-      const url = new URL(window.location.href);
-      url.searchParams.set('price', price);
-      url.searchParams.set('range', range || '0');
-      url.searchParams.set('PaymentType', paymentType);
-      url.searchParams.set('arrangeby', 'price');
-      
-      // Navigate to the new URL
-      window.location.href = url.toString();
-    } catch (error) {
-      console.error("Error applying filters:", error);
-      this.showStatus(panel, 'Error applying filters', false);
-    }
-  });
-  
-  panel.querySelector('#save-settings-btn').addEventListener('click', async () => {
-    const price = panel.querySelector('#panel-price').value;
-    const range = panel.querySelector('#panel-range').value;
-    const paymentType = panel.querySelector('#panel-payment').value;
-    
-    // Save to storage
-    chrome.storage.sync.set({
-      priceFloor: price,
-      rangeMiles: range,
-      paymentType: paymentType
-    }, () => {
-      this.showStatus(panel, 'Settings saved successfully!', true);
     });
-  });
-},
+  },
   
   /**
    * Show a status message in the panel
@@ -1130,7 +1123,7 @@ function setupMessageHandler() {
     }
     
     // Toggle panel visibility
-    if (message.cmd === 'togglePanel') {
+    if (message.cmd === 'togglePanel' || message.action === 'togglePanel') {
       PanelUI.togglePanel();
       sendResponse({ status: 'Panel toggled' });
       return true;
@@ -1138,8 +1131,8 @@ function setupMessageHandler() {
     
     // Fill form fields
     if (message.action === 'fillForm') {
-      FormHandler.fillForm().then(count => {
-        sendResponse({ status: 'Form filled', count });
+      FormHandler.fillForm().then(result => {
+        sendResponse({ status: 'Form filled', count: result.count });
       }).catch(err => {
         console.error('Error filling form:', err);
         sendResponse({ status: 'Error', error: err.message });
@@ -1147,14 +1140,10 @@ function setupMessageHandler() {
       return true;
     }
     
-    // Fill order form with VIN
-    if (message.action === 'fillOrderForm') {
-      FormHandler.fillForm().then(count => {
-        sendResponse({ status: 'Form filled', count });
-      }).catch(err => {
-        console.error('Error filling form:', err);
-        sendResponse({ status: 'Error', error: err.message });
-      });
+    // Handle fix validation errors
+    if (message.action === 'fixValidation') {
+      FormHandler.fixValidationErrors();
+      sendResponse({ status: 'Validation fixed' });
       return true;
     }
     
@@ -1176,9 +1165,9 @@ function initialize() {
   if (Helpers.isOrderPage() && window.location.href.includes('autoFill=true')) {
     // Auto-fill form after a short delay to ensure page is loaded
     setTimeout(() => {
-      FormHandler.fillForm().then(count => {
-        if (count > 0) {
-          Helpers.showNotification(`${count} fields filled automatically`);
+      FormHandler.fillForm().then(result => {
+        if (result.count > 0) {
+          Helpers.showNotification(`${result.count} fields filled automatically`);
         }
       });
     }, 1000);
@@ -1187,3 +1176,299 @@ function initialize() {
 
 // Start the script
 initialize();
+
+// Tesla Payment Helper
+// Add this to the end of your inject.js file
+
+// Add a helper to directly assist with payment input since it's in an iframe
+(function() {
+  console.log("Loading Tesla payment helper...");
+  
+  // Wait for FormHandler to be defined
+  const checkInterval = setInterval(() => {
+    if (typeof FormHandler !== 'undefined') {
+      clearInterval(checkInterval);
+      extendFormHandlerWithPaymentHelp();
+    }
+  }, 100);
+  
+  function extendFormHandlerWithPaymentHelp() {
+    // Create a simple helper to show payment info to the user
+    FormHandler.showPaymentHelper = function() {
+      // Get user data
+      chrome.storage.sync.get(null, data => {
+        // Create payment helper dialog
+        const helperDialog = document.createElement('div');
+        helperDialog.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: #fff;
+          border-radius: 8px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+          padding: 20px;
+          width: 350px;
+          max-width: 90vw;
+          z-index: 99999;
+          font-family: system-ui, sans-serif;
+          color: #333;
+        `;
+        
+        // Get payment info
+        const cardName = data.cardName || '';
+        const cardNumber = data.cardNumber || '';
+        const cardExp = data.cardExp || '';
+        const cardCVV = data.cardCVV || '';
+        const zip = data.zip || '';
+        
+        // Create dialog content
+        helperDialog.innerHTML = `
+          <h3 style="margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 16px;">
+            Payment Information Helper
+          </h3>
+          <p style="font-size: 14px; color: #666;">
+            Payment fields are inside a secure iframe and cannot be filled automatically.
+            Copy these values to manually fill the payment form:
+          </p>
+          <div style="margin: 15px 0;">
+            <div style="margin-bottom: 10px;">
+              <div style="font-weight: bold; font-size: 13px; margin-bottom: 3px;">Name on Card:</div>
+              <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; font-family: monospace;">${cardName}</div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="font-weight: bold; font-size: 13px; margin-bottom: 3px;">Card Number:</div>
+              <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; font-family: monospace;">${cardNumber}</div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="font-weight: bold; font-size: 13px; margin-bottom: 3px;">Expiration:</div>
+              <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; font-family: monospace;">${cardExp}</div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="font-weight: bold; font-size: 13px; margin-bottom: 3px;">Security Code (CVV):</div>
+              <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; font-family: monospace;">${cardCVV}</div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="font-weight: bold; font-size: 13px; margin-bottom: 3px;">Billing ZIP:</div>
+              <div style="padding: 8px; background: #f5f5f5; border-radius: 4px; font-family: monospace;">${zip}</div>
+            </div>
+          </div>
+          <div style="text-align: right; margin-top: 15px;">
+            <button id="payment-helper-close" style="background: #3b82f6; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">
+              Close
+            </button>
+          </div>
+        `;
+        
+        // Add to page
+        document.body.appendChild(helperDialog);
+        
+        // Set up close button
+        document.getElementById('payment-helper-close').addEventListener('click', () => {
+          helperDialog.remove();
+        });
+        
+        // Auto-close after 1 minute
+        setTimeout(() => {
+          if (document.body.contains(helperDialog)) {
+            helperDialog.remove();
+          }
+        }, 60000);
+      });
+    };
+    
+    // Add a button to the panel to show payment helper
+    const originalCreateOrderPanel = PanelUI.createOrderPanel;
+    
+    PanelUI.createOrderPanel = async function(panel) {
+      // Call original method
+      await originalCreateOrderPanel.call(this, panel);
+      
+      // Add payment helper button to panel
+      const filledFormBtn = panel.querySelector('#fill-form-btn');
+      if (filledFormBtn) {
+        const paymentHelperBtn = document.createElement('button');
+        paymentHelperBtn.className = 'btn';
+        paymentHelperBtn.textContent = 'Show Payment Info';
+        paymentHelperBtn.id = 'payment-helper-btn';
+        paymentHelperBtn.style.background = '#3b82f6';
+        
+        filledFormBtn.parentNode.insertBefore(paymentHelperBtn, filledFormBtn.nextSibling);
+        
+        paymentHelperBtn.addEventListener('click', () => {
+          FormHandler.showPaymentHelper();
+          this.showStatus(panel, 'Payment helper shown', true);
+        });
+      }
+    };
+    
+    // Enhance fill form to automatically show payment helper
+    const originalFillForm = FormHandler.fillForm;
+    
+    FormHandler.fillForm = async function() {
+      const result = await originalFillForm.call(this);
+      
+      // Check if we failed to fill payment fields
+      const paymentFields = ['cardName', 'cardNumber', 'cardCVV', 'cardExpMonth', 'cardExpYear', 'billingZip'];
+      const missingPaymentFields = result.failedFields?.filter(f => paymentFields.includes(f)) || [];
+      
+      if (missingPaymentFields.length > 0) {
+        // Wait a moment before showing the helper
+        setTimeout(() => {
+          FormHandler.showPaymentHelper();
+        }, 1000);
+      }
+      
+      return result;
+    };
+    
+    // Add a keyboard shortcut to trigger the payment helper
+    document.addEventListener('keydown', (e) => {
+      // Alt+P to show payment helper
+      if (e.altKey && e.key === 'p') {
+        FormHandler.showPaymentHelper();
+      }
+    });
+    
+    console.log("Tesla payment helper loaded successfully!");
+  }
+})();
+
+// Tesla Shipping Address Enhancement
+// Add this to the end of your inject.js file
+
+// Add a shipping address helper to fill in missing shipping fields
+(function() {
+  console.log("Loading Tesla shipping address helper...");
+  
+  // Wait for FormHandler to be defined
+  const checkInterval = setInterval(() => {
+    if (typeof FormHandler !== 'undefined') {
+      clearInterval(checkInterval);
+      extendFormHandlerWithShippingHelp();
+    }
+  }, 100);
+  
+  function extendFormHandlerWithShippingHelp() {
+    // Create a method to handle shipping fields specifically
+    FormHandler.fillShippingFields = async function() {
+      try {
+        // Get user data
+        const userData = await new Promise(resolve => {
+          chrome.storage.sync.get(null, data => {
+            resolve(data || {});
+          });
+        });
+        
+        console.log('Filling shipping fields with user data:', userData);
+        
+        let filledCount = 0;
+        const filledFields = [];
+        
+        // Try to find the shipping sections
+        const shippingSection = document.querySelector('h4.text-loader--subtitle, .accessories-shipping-form');
+        
+        if (!shippingSection) {
+          console.log('Shipping section not found');
+          return { count: 0, fields: [] };
+        }
+        
+        // When filling specific section, try more aggressively with generic selectors
+        // Address field
+        const addressField = document.querySelector(
+          'input[placeholder*="shipping address"], input[placeholder*="Address"], input[name*="shipping"], input[id*="shipping"]'
+        );
+        
+        if (addressField && userData.addr1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (this.fillField(addressField, userData.addr1)) {
+            filledCount++;
+            filledFields.push('shipping-address');
+          }
+        }
+        
+        // Address line 2
+        const address2Field = document.querySelector(
+          'input[placeholder*="Apartment"], input[placeholder*="Suite"], input[id*="line-2"], input[name*="line2"]'
+        );
+        
+        if (address2Field && userData.addr2) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (this.fillField(address2Field, userData.addr2)) {
+            filledCount++;
+            filledFields.push('shipping-address2');
+          }
+        }
+        
+        // City
+        const cityField = document.querySelector(
+          'input[placeholder*="City"], input[name*="city"], input[id*="city"]'
+        );
+        
+        if (cityField && userData.city) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (this.fillField(cityField, userData.city)) {
+            filledCount++;
+            filledFields.push('shipping-city');
+          }
+        }
+        
+        // ZIP
+        const zipField = document.querySelector(
+          'input[placeholder*="ZIP"], input[placeholder*="Zip"], input[placeholder*="Postal"], input[name*="zip"], input[name*="postal"]'
+        );
+        
+        if (zipField && userData.zip) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (this.fillField(zipField, userData.zip)) {
+            filledCount++;
+            filledFields.push('shipping-zip');
+          }
+        }
+        
+        // State - can be dropdown or input
+        const stateField = document.querySelector(
+          'select[name*="state"], select[id*="state"], input[name*="state"], input[id*="state"]'
+        );
+        
+        if (stateField && userData.state) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          if (this.fillField(stateField, userData.state)) {
+            filledCount++;
+            filledFields.push('shipping-state');
+          }
+        }
+        
+        console.log(`Shipping section: filled ${filledCount} fields:`, filledFields.join(', '));
+        
+        return {
+          count: filledCount,
+          fields: filledFields
+        };
+      } catch (e) {
+        console.error('Error filling shipping fields:', e);
+        return { count: 0, fields: [] };
+      }
+    };
+    
+    // Extension points for original fillForm
+    const originalFillForm = FormHandler.fillForm;
+    
+    FormHandler.fillForm = async function() {
+      // Call original method
+      const result = await originalFillForm.call(this);
+      
+      // Add extra attempt for shipping fields
+      const shippingResult = await this.fillShippingFields();
+      
+      // Combine results
+      return {
+        count: result.count + shippingResult.count,
+        fields: [...result.fields, ...shippingResult.fields],
+        failedFields: result.failedFields || []
+      };
+    };
+    
+    console.log("Tesla shipping address helper loaded successfully!");
+  }
+})();
