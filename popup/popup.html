@@ -427,11 +427,16 @@
         <span class="locale-text-tr">Profil bilgilerinizi Ayarlar'da yapılandırın.</span>
       </p>
     </div>
-    
+
+
     <div class="button-group">
-      <button id="fill-form-btn" class="btn button-full">
+      <button id="fill-form-btn" class="btn">
         <span class="locale-text-en">Fill Form</span>
         <span class="locale-text-tr">Formu Doldur</span>
+      </button>
+      <button id="fill-zip-btn" class="btn">
+        <span class="locale-text-en">Fill ZIP</span>
+        <span class="locale-text-tr">ZIP Doldur</span>
       </button>
       <button id="fix-validation-btn" class="btn">
         <span class="locale-text-en">Fix Validation</span>
@@ -442,6 +447,37 @@
         <span class="locale-text-tr">Paneli Göster</span>
       </button>
     </div>
+
+    <!-- Add this ZIP code setting panel to popup/popup.html -->
+<!-- Add this right after the existing button-group div in the form-tab section -->
+
+<div class="zip-set-panel" style="margin-top: 20px; padding: 12px; background-color: #f0f9ff; border-radius: 8px;">
+  <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; color: #1e40af;">
+    <span class="locale-text-en">Set ZIP Code</span>
+    <span class="locale-text-tr">ZIP Kodu Ayarla</span>
+  </h4>
+  
+  <div style="display: flex; gap: 8px;">
+    <input 
+      type="text" 
+      id="zip-code-input" 
+      style="flex-grow: 1; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"
+      placeholder="Enter ZIP Code"
+    >
+    <button 
+      id="set-zip-btn" 
+      style="background: #3b82f6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;"
+    >
+      <span class="locale-text-en">Set</span>
+      <span class="locale-text-tr">Ayarla</span>
+    </button>
+  </div>
+  
+  <p style="margin-top: 8px; margin-bottom: 0; font-size: 12px; color: #6b7280;">
+    <span class="locale-text-en">This will be used to fill ZIP code dialogs</span>
+    <span class="locale-text-tr">ZIP kodu iletişim kutularını doldurmak için kullanılır</span>
+  </p>
+</div>
   </div>
   
   <script src="popup.js"></script>

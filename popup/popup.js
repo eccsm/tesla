@@ -575,6 +575,66 @@ async function changeRegion(region) {
   }
 }
 
+// Add this function to popup/popup.js
+// Add it near the fillForm, fixValidation, and togglePanel functions
+
+// Fill ZIP code dialog
+async function fillZipDialog() {
+  const isTeslaPage = await checkIfTeslaPage();
+  if (!isTeslaPage) {
+    const message = currentSettings.region === 'TR' ? 
+      'Tesla sayfasında değilsiniz' : 
+      'Not on a Tesla page';
+    showNotification(message, false);
+    return;
+  }
+  
+  try {
+    const message = currentSettings.region === 'TR' ? 
+      'ZIP kodu doldurulmaya çalışılıyor...' : 
+      'Filling ZIP code...';
+    showNotification(message, true);
+    
+    // Send message to content script
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {action: 'fillZipDialog'}, function(response) {
+          if (chrome.runtime.lastError) {
+            console.error('Error sending message:', chrome.runtime.lastError);
+            const errorMessage = currentSettings.region === 'TR' ?
+              'Mesaj gönderilirken hata oluştu' :
+              'Error sending message';
+            showNotification(errorMessage, false);
+          } else {
+            console.log('Response:', response);
+            const successMessage = currentSettings.region === 'TR' ?
+              'ZIP kodu doldurma talimatı gönderildi' :
+              'ZIP code fill attempted';
+            showNotification(successMessage, true);
+          }
+        });
+      } else {
+        const errorMessage = currentSettings.region === 'TR' ?
+          'Aktif sekme bulunamadı' :
+          'No active tab found';
+        showNotification(errorMessage, false);
+      }
+    });
+  } catch (err) {
+    console.error('Error filling ZIP dialog:', err);
+    
+    const errorMessage = currentSettings.region === 'TR' ? 
+      'ZIP kodu doldurulurken hata oluştu' : 
+      'Error filling ZIP code dialog';
+    showNotification(errorMessage, false);
+  }
+}
+
+// Then add this to the DOMContentLoaded event listener:
+// Add this right after adding the togglePanel event listener
+
+
+
 // Fill the form on the current page
 async function fillForm() {
   const isTeslaPage = await checkIfTeslaPage();
@@ -727,6 +787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('fill-form-btn').addEventListener('click', fillForm);
     document.getElementById('fix-validation-btn').addEventListener('click', fixValidation);
     document.getElementById('toggle-panel-btn').addEventListener('click', togglePanel);
+    document.getElementById('fill-zip-btn').addEventListener('click', fillZipDialog);
     
     // Update button states based on whether we're on a Tesla page
     checkIfTeslaPage().then(isTeslaPage => {
@@ -754,4 +815,89 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('Error initializing popup:', err);
     showNotification('Error initializing extension', false);
   }
+
+  // Add this to popup/popup.js
+// Add this at the end of your document.addEventListener('DOMContentLoaded', async () => {...}) function
+
+// Set up the ZIP code setting functionality
+function setupZipCodeSetting() {
+  const zipInput = document.getElementById('zip-code-input');
+  const setZipBtn = document.getElementById('set-zip-btn');
+  
+  if (!zipInput || !setZipBtn) return;
+  
+  // Pre-fill with any existing ZIP code
+  chrome.storage.sync.get(['zip'], (data) => {
+    if (data && data.zip) {
+      zipInput.value = data.zip;
+      zipInput.placeholder = `Current: ${data.zip}`;
+    }
+  });
+  
+  // Set ZIP code button handler
+  setZipBtn.addEventListener('click', () => {
+    const zipCode = zipInput.value.trim();
+    
+    if (!zipCode) {
+      const message = currentSettings.region === 'TR' ? 
+        'Lütfen bir ZIP kodu girin' : 
+        'Please enter a ZIP code';
+      showNotification(message, false);
+      return;
+    }
+    
+    // Save to storage
+    chrome.storage.sync.set({ zip: zipCode }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error saving ZIP code:', chrome.runtime.lastError);
+        const errorMessage = currentSettings.region === 'TR' ? 
+          'ZIP kodu kaydedilirken hata oluştu' : 
+          'Error saving ZIP code';
+        showNotification(errorMessage, false);
+      } else {
+        const successMessage = currentSettings.region === 'TR' ? 
+          `ZIP kodu kaydedildi: ${zipCode}` : 
+          `ZIP code saved: ${zipCode}`;
+        showNotification(successMessage, true);
+        
+        // Also try to apply the ZIP code to any active tab
+        applyZipCodeToActiveTab(zipCode);
+      }
+    });
+  });
+  
+  // Enter key handler
+  zipInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      setZipBtn.click();
+      }
+      });
+    }
+
+  // Apply ZIP code to the active tab
+  function applyZipCodeToActiveTab(zipCode) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0) {
+        const tab = tabs[0];
+        
+        // Check if the tab is a Tesla page
+        if (tab.url && tab.url.includes('tesla.com')) {
+          // Send message to content script
+          chrome.tabs.sendMessage(tab.id, { 
+            action: 'setZipCode',
+            zipCode: zipCode
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('Error sending message to tab:', chrome.runtime.lastError);
+            } else if (response && response.success) {
+              console.log('ZIP code applied to active tab:', response);
+            }
+          });
+        }
+      }
+    });
+  }
+
+  // Call this setup function at the end of your DOMContentLoaded event
+  setupZipCodeSetting();
 });

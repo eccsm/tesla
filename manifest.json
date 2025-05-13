@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tesla AutoPilot Fixed",
-  "description": "Track Tesla inventory under your price target and auto-fill the checkout form. Enhanced version with form validation fixes.",
-  "version": "1.3.0",
+  "name": "Tesla AutoPilot Enhanced",
+  "description": "Track Tesla inventory under your price target, auto-fill checkout forms, and auto-fill ZIP code dialogs on inventory pages.",
+  "version": "1.4.0",
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {

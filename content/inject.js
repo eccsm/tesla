@@ -581,7 +581,7 @@ const FormHandler = {
       
       // Fill each field with a delay between them
       for (const [fieldId, dataKey] of Object.entries(fieldMapping)) {
-        if (userData[dataKey]) {
+        if (userData[dataKey] != null && userData[dataKey] !== '') {
           // Add a random delay to seem more human-like
           await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 300));
           
@@ -608,7 +608,8 @@ const FormHandler = {
         // Try to fill month field
         if (month) {
           await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
-          const monthField = this.getField('cardExpMonth');
+          const monthField = await waitFor('select[name="ccExpMonth"]');
+
           if (monthField && this.fillField(monthField, month)) {
             filledCount++;
             filledFields.push('cardExpMonth');
@@ -751,6 +752,19 @@ const FormHandler = {
     return false;
   }
 };
+
+async function waitFor(selector, timeout = 7000) {
+  const poll = 150;
+  const max  = timeout / poll;
+  let el, n = 0;
+  while (!el && n++ < max) {
+    el = document.querySelector(selector);
+    if (el) return el;
+    await new Promise(r => setTimeout(r, poll));
+  }
+  return null;
+}
+
 
 // Panel UI
 const PanelUI = {
@@ -1471,4 +1485,481 @@ initialize();
     
     console.log("Tesla shipping address helper loaded successfully!");
   }
+})();
+
+
+(function() {
+  console.log('Enhanced Tesla ZIP Code Dialog Filler initializing...');
+  
+  // Store a local copy of the ZIP code for fallback
+  let cachedZipCode = null;
+  
+  // Try to pre-load the ZIP code
+  chrome.storage.sync.get(['zip'], function(data) {
+    if (data && data.zip) {
+      cachedZipCode = data.zip;
+      console.log(`Loaded ZIP code from storage: ${cachedZipCode}`);
+    } else {
+      console.log('No ZIP code found in storage, will prompt user on first run');
+    }
+  });
+
+  /**
+   * Function to check for and fill ZIP code dialog with better error handling
+   */
+  function detectAndFillZipDialog() {
+    console.log('Checking for ZIP code dialog...');
+    
+    try {
+      // First look for the specific Tesla ZIP code dialog
+      const zipDialog = document.querySelector('dialog.postal-search-modal--container, .tds-modal.postal-search-modal--container');
+      
+      if (zipDialog) {
+        console.log('Found ZIP code dialog:', zipDialog);
+        
+        // Find the ZIP input directly in the dialog
+        const zipInput = zipDialog.querySelector('input[name="zip"], input[data-id="registration-postal-code-textbox"]');
+        
+        if (zipInput) {
+          console.log('Found ZIP input field:', zipInput);
+          fillZipField(zipInput, zipDialog);
+          return;
+        }
+      }
+      
+      // Fallback: Look for any dialog with ZIP input
+      const allDialogs = document.querySelectorAll('dialog, .tds-modal');
+      
+      for (const dialog of allDialogs) {
+        const zipInput = dialog.querySelector('input[name="zip"], input[data-id="registration-postal-code-textbox"], input[placeholder*="Zip"], input[placeholder*="ZIP"]');
+        
+        if (zipInput) {
+          console.log('Found ZIP input in dialog:', zipInput);
+          fillZipField(zipInput, dialog);
+          return;
+        }
+      }
+      
+      // Last resort: Look for any ZIP input on the page
+      const zipInputs = document.querySelectorAll('input[name="zip"], input[data-id="registration-postal-code-textbox"], input[placeholder*="Zip"], input[placeholder*="ZIP"]');
+      
+      if (zipInputs.length > 0) {
+        console.log('Found ZIP input on page:', zipInputs[0]);
+        fillZipField(zipInputs[0]);
+        return;
+      }
+      
+      console.log('No ZIP input field found');
+    } catch (error) {
+      console.error('Error in detectAndFillZipDialog:', error);
+    }
+  }
+  
+  /**
+   * Fill a ZIP code field and submit it
+   * @param {HTMLInputElement} zipInput - The ZIP input field
+   * @param {HTMLElement} container - Optional parent container
+   */
+  function fillZipField(zipInput, container = null) {
+    // Get ZIP code from storage or cached value
+    getZipCode().then(zipCode => {
+      if (!zipCode) {
+        console.log('No ZIP code available, prompting user');
+        promptForZipCode(zipInput, container);
+        return;
+      }
+      
+      try {
+        console.log(`Filling ZIP field with: ${zipCode}`);
+        
+        // Focus the field
+        zipInput.focus();
+        
+        // Clear existing value
+        zipInput.value = '';
+        zipInput.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Set the new value
+        zipInput.value = zipCode;
+        zipInput.dispatchEvent(new Event('input', { bubbles: true }));
+        zipInput.dispatchEvent(new Event('change', { bubbles: true }));
+        zipInput.dispatchEvent(new Event('blur', { bubbles: true }));
+        
+        // Verify field was filled
+        console.log(`Field value after filling: "${zipInput.value}"`);
+        
+        if (zipInput.value !== zipCode) {
+          // Try alternative method for stubborn fields
+          console.log('Direct value setting failed, trying property descriptor method');
+          const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          if (descriptor && descriptor.set) {
+            descriptor.set.call(zipInput, zipCode);
+          }
+          
+          // Try setting via JavaScript directly
+          setTimeout(() => {
+            zipInput.value = zipCode;
+            zipInput.dispatchEvent(new Event('input', { bubbles: true }));
+            zipInput.dispatchEvent(new Event('change', { bubbles: true }));
+          }, 50);
+        }
+        
+        // Show notification
+        showZipFilledNotification(zipCode);
+        
+        // Click submit button or submit form after a short delay
+        setTimeout(() => submitZipCode(zipInput, container), 300);
+      } catch (error) {
+        console.error('Error filling ZIP field:', error);
+      }
+    }).catch(error => {
+      console.error('Error getting ZIP code:', error);
+      promptForZipCode(zipInput, container);
+    });
+  }
+  
+  /**
+   * Prompt user for ZIP code if none is found
+   */
+  function promptForZipCode(zipInput, container) {
+    // Create a simple dialog to ask for ZIP code
+    const promptDialog = document.createElement('div');
+    promptDialog.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.3);
+      z-index: 100000;
+      width: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    
+    promptDialog.innerHTML = `
+      <h3 style="margin-top:0;">Enter ZIP Code</h3>
+      <p>No ZIP code found in storage. Please enter your ZIP code:</p>
+      <input type="text" id="tesla-zip-prompt" style="width:100%;padding:8px;margin:10px 0;box-sizing:border-box;" placeholder="Enter ZIP code">
+      <div style="display:flex;justify-content:space-between;margin-top:15px;">
+        <button id="tesla-zip-cancel" style="padding:8px 15px;background:#eee;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+        <button id="tesla-zip-save" style="padding:8px 15px;background:#3b82f6;color:white;border:none;border-radius:4px;cursor:pointer;">Save & Apply</button>
+      </div>
+      <label style="display:block;margin-top:15px;">
+        <input type="checkbox" id="tesla-zip-remember" checked> Remember this ZIP code
+      </label>
+    `;
+    
+    document.body.appendChild(promptDialog);
+    
+    // Focus the input
+    setTimeout(() => document.getElementById('tesla-zip-prompt').focus(), 100);
+    
+    // Handle save button
+    document.getElementById('tesla-zip-save').addEventListener('click', () => {
+      const newZip = document.getElementById('tesla-zip-prompt').value.trim();
+      const remember = document.getElementById('tesla-zip-remember').checked;
+      
+      if (newZip) {
+        // Remove prompt
+        promptDialog.remove();
+        
+        // Save ZIP if requested
+        if (remember) {
+          saveZipCode(newZip);
+        } else {
+          // Just cache it for this session
+          cachedZipCode = newZip;
+        }
+        
+        // Fill the field
+        zipInput.value = newZip;
+        zipInput.dispatchEvent(new Event('input', { bubbles: true }));
+        zipInput.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Submit after a short delay
+        setTimeout(() => submitZipCode(zipInput, container), 300);
+      }
+    });
+    
+    // Handle cancel button
+    document.getElementById('tesla-zip-cancel').addEventListener('click', () => {
+      promptDialog.remove();
+    });
+    
+    // Handle Enter key
+    document.getElementById('tesla-zip-prompt').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('tesla-zip-save').click();
+      }
+    });
+  }
+  
+  /**
+   * Submit the ZIP code form or click appropriate button
+   */
+  function submitZipCode(zipInput, container) {
+    try {
+      // First try to find and click a submit button
+      let submitButton = findSubmitButton(container || document);
+      
+      if (submitButton) {
+        console.log('Clicking submit button:', submitButton);
+        submitButton.click();
+        return;
+      }
+      
+      // If no button found, try to submit the form
+      const form = zipInput.closest('form');
+      if (form) {
+        console.log('Submitting parent form');
+        form.dispatchEvent(new Event('submit', { bubbles: true }));
+        return;
+      }
+      
+      // Last resort: press Enter on the input
+      console.log('Trying Enter key on input');
+      zipInput.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true
+      }));
+    } catch (error) {
+      console.error('Error submitting ZIP code:', error);
+    }
+  }
+  
+  /**
+   * Find a submit button within a container
+   */
+  function findSubmitButton(container) {
+    // List of button selectors in order of preference
+    const buttonSelectors = [
+      // By text content
+      'button:not([aria-label*="Close"]):not(.tds-modal-close)',
+      // By common Tesla class
+      'button.tds-btn',
+      // Footer buttons (usually submits)
+      '.tds-modal-footer button:not([aria-label*="Close"])',
+      // By position
+      'form button:last-child'
+    ];
+    
+    // Try each selector
+    for (const selector of buttonSelectors) {
+      const buttons = container.querySelectorAll(selector);
+      
+      if (buttons.length > 0) {
+        // Look for buttons with submit-like text first
+        for (const button of buttons) {
+          const text = button.textContent.toLowerCase();
+          if (text.includes('search') || 
+              text.includes('submit') || 
+              text.includes('apply') || 
+              text.includes('save') ||
+              text.includes('continue') ||
+              text.includes('ok') ||
+              text.includes('update')) {
+            return button;
+          }
+        }
+        
+        // If no submit-like text button found, return the last button
+        return buttons[buttons.length - 1];
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get the ZIP code from storage or cache
+   */
+  async function getZipCode() {
+    // First check our cache
+    if (cachedZipCode) {
+      return cachedZipCode;
+    }
+    
+    // Try to get from storage
+    try {
+      return new Promise((resolve) => {
+        chrome.storage.sync.get(['zip'], (data) => {
+          if (chrome.runtime.lastError) {
+            console.warn('Error accessing storage:', chrome.runtime.lastError);
+            resolve(null);
+          } else if (data && data.zip) {
+            // Cache for future use
+            cachedZipCode = data.zip;
+            resolve(data.zip);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error getting ZIP from storage:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Save ZIP code to storage and cache
+   */
+  function saveZipCode(zipCode) {
+    // Update cache
+    cachedZipCode = zipCode;
+    
+    // Save to storage
+    try {
+      chrome.storage.sync.set({ zip: zipCode }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('Error saving to storage:', chrome.runtime.lastError);
+        } else {
+          console.log(`Saved ZIP code to storage: ${zipCode}`);
+        }
+      });
+    } catch (error) {
+      console.error('Error saving ZIP to storage:', error);
+    }
+  }
+  
+  /**
+   * Show a notification that ZIP was filled
+   */
+  function showZipFilledNotification(zipCode) {
+    // Create notification if it doesn't exist
+    let notification = document.querySelector('.tesla-zip-notification');
+    
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.className = 'tesla-zip-notification';
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(59, 130, 246, 0.9);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        z-index: 99999;
+        font-family: system-ui, sans-serif;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        transition: opacity 0.3s ease;
+        font-size: 14px;
+        opacity: 1;
+      `;
+      document.body.appendChild(notification);
+    }
+    
+    // Update notification text
+    notification.textContent = `Tesla AutoPilot: ZIP code ${zipCode} filled automatically`;
+    notification.style.opacity = '1';
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
+  
+  // Set up mutation observer to detect dialog appearance
+  const observer = new MutationObserver((mutations) => {
+    let dialogDetected = false;
+    
+    for (const mutation of mutations) {
+      // Check for added nodes
+      if (mutation.type === 'childList' && mutation.addedNodes.length) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            // Check if it's a dialog or contains dialog-like elements
+            if (node.tagName === 'DIALOG' || 
+                node.querySelector('dialog') ||
+                (node.classList && (
+                  node.classList.contains('tds-modal') ||
+                  node.classList.contains('postal-search-modal--container')
+                ))) {
+              console.log('Dialog detected in DOM changes');
+              dialogDetected = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Check for attribute changes
+      if (mutation.type === 'attributes') {
+        const target = mutation.target;
+        
+        // Check if a dialog or modal appeared/changed
+        if ((target.tagName === 'DIALOG' && mutation.attributeName === 'open') || 
+            (target.classList && target.classList.contains('tds-modal') && 
+            (mutation.attributeName === 'style' || mutation.attributeName === 'class'))) {
+          dialogDetected = true;
+          break;
+        }
+      }
+      
+      if (dialogDetected) break;
+    }
+    
+    if (dialogDetected) {
+      setTimeout(detectAndFillZipDialog, 300);
+    }
+  });
+  
+  // Configure the observer
+  observer.observe(document, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['open', 'style', 'class']
+  });
+  
+  // Handle messages from popup
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'fillZipDialog') {
+      console.log('Manual ZIP dialog fill triggered via message');
+      try {
+        detectAndFillZipDialog();
+        sendResponse({ status: 'ZIP dialog fill attempted', success: true });
+      } catch (error) {
+        console.error('Error in ZIP dialog fill handler:', error);
+        sendResponse({ status: 'Error filling ZIP dialog', success: false, error: error.message });
+      }
+      return true;
+    }
+    
+    // New message handler for setting ZIP code directly
+    if (message.action === 'setZipCode' && message.zipCode) {
+      console.log(`Received new ZIP code: ${message.zipCode}`);
+      try {
+        // Save the new ZIP code
+        saveZipCode(message.zipCode);
+        
+        // Try to fill any open dialog
+        detectAndFillZipDialog();
+        
+        sendResponse({ status: 'ZIP code set and applied', success: true });
+      } catch (error) {
+        console.error('Error setting ZIP code:', error);
+        sendResponse({ status: 'Error setting ZIP code', success: false, error: error.message });
+      }
+      return true;
+    }
+  });
+  
+  // Check for dialog on page load
+  window.addEventListener('load', () => {
+    console.log('Page loaded, checking for ZIP dialog');
+    setTimeout(detectAndFillZipDialog, 1000);
+  });
+  
+  // Also check on initial run after a short delay
+  setTimeout(detectAndFillZipDialog, 1000);
+  
+  console.log('Enhanced Tesla ZIP Code Dialog Filler initialized');
 })();
