@@ -534,8 +534,9 @@ const FormHandler = {
     }
   },
   
+  
   /**
-   * Fill form with user data - enhanced with validation fixing and better field targeting
+   * Fill form with user data - enhanced with payment field handling
    * @returns {Promise<{count: number, fields: string[]}>} Details of filled fields
    */
   async fillForm() {
@@ -569,11 +570,7 @@ const FormHandler = {
         'addr1': 'addr1',
         'addr2': 'addr2',
         
-        // Payment
-        'cardName': 'cardName',
-        'cardNumber': 'cardNumber',
-        'cardCVV': 'cardCVV',
-        'zip': 'zip'
+        // Payment fields excluded since they'll be handled separately
       };
       
       // Get current region for regional adaptations
@@ -601,34 +598,11 @@ const FormHandler = {
         }
       }
       
-      // Special handling for expiration date
-      if (userData.cardExp) {
-        const { month, year } = this.parseExpirationDate(userData.cardExp);
-        
-        // Try to fill month field
-        if (month) {
-          await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
-          const monthField = await waitFor('select[name="ccExpMonth"]');
-
-          if (monthField && this.fillField(monthField, month)) {
-            filledCount++;
-            filledFields.push('cardExpMonth');
-          } else {
-            failedFields.push('cardExpMonth');
-          }
-        }
-        
-        // Try to fill year field
-        if (year) {
-          await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 100));
-          const yearField = this.getField('cardExpYear');
-          if (yearField && this.fillField(yearField, year)) {
-            filledCount++;
-            filledFields.push('cardExpYear');
-          } else {
-            failedFields.push('cardExpYear');
-          }
-        }
+      // Handle payment fields separately with enhanced iframe handling
+      const paymentResult = await fillPaymentFields();
+      if (paymentResult.count > 0) {
+        filledCount += paymentResult.count;
+        filledFields.push('payment-fields');
       }
       
       // Check agreement checkboxes
@@ -640,17 +614,6 @@ const FormHandler = {
       
       console.log(`Form filling complete. Filled ${filledCount} fields:`, filledFields.join(', '));
       console.log(`Failed to fill ${failedFields.length} fields:`, failedFields.join(', '));
-      
-      // If some fields failed, attempt to explain why
-      if (failedFields.length > 0) {
-        // Check if payment fields failed - these are likely in an iframe
-        const paymentFields = ['cardName', 'cardNumber', 'cardCVV', 'cardExpMonth', 'cardExpYear'];
-        const failedPaymentFields = failedFields.filter(f => paymentFields.includes(f));
-        
-        if (failedPaymentFields.length > 0) {
-          console.log('Note: Payment fields are likely in a secure iframe and cannot be accessed directly.');
-        }
-      }
       
       return {
         count: filledCount,
@@ -1963,3 +1926,611 @@ initialize();
   
   console.log('Enhanced Tesla ZIP Code Dialog Filler initialized');
 })();
+
+/**
+ * Enhanced method to fill payment fields in iframes
+ * @returns {Promise<{success: boolean, count: number}>} Success details
+ */
+async function fillPaymentFields() {
+  console.log("Attempting to fill payment fields in iframes...");
+  
+  try {
+    // Get payment data from storage
+    const userData = await new Promise(resolve => {
+      chrome.storage.sync.get(['cardName', 'cardNumber', 'cardExp', 'cardCVV', 'zip'], data => {
+        resolve(data || {});
+      });
+    });
+    
+    if (!userData.cardName && !userData.cardNumber) {
+      console.log("No payment data found in storage");
+      return { success: false, count: 0 };
+    }
+    
+    // Find all iframes on the page
+    const iframes = Array.from(document.querySelectorAll('iframe'));
+    console.log(`Found ${iframes.length} iframes on the page`);
+    
+    // We can't directly access iframe content due to security restrictions,
+    // but we can try simulating user interaction on the parent elements
+    
+    // First find all visible input fields with name patterns matching credit card fields
+    const fieldSelectors = [
+      // Try every possible selector pattern
+      '[name*="card"][name*="name"], [name*="creditCardHolderName"], [id*="card"][id*="name"]',
+      '[name*="card"][name*="number"], [name*="creditCardNumber"], [id*="card"][id*="number"]',
+      '[name*="card"][name*="cvv"], [name*="creditCardCvv"], [name*="securityCode"], [id*="cvv"]',
+      '[name*="expiryMonth"], [name*="creditCardExpiryMonth"], [id*="expiryMonth"]',
+      '[name*="expiryYear"], [name*="creditCardExpiryYear"], [id*="expiryYear"]',
+      '[name*="zip"], [name*="billingZipCode"], [name*="postalCode"], [id*="zip"]'
+    ];
+    
+    // First approach: Try direct access to any fields that are not in iframes
+    let filledCount = 0;
+    for (const selector of fieldSelectors) {
+      const fields = document.querySelectorAll(selector);
+      for (const field of fields) {
+        if (field.tagName === 'INPUT' || field.tagName === 'SELECT') {
+          try {
+            // Determine which data to fill based on field attributes
+            const name = field.name || field.id || '';
+            const lowerName = name.toLowerCase();
+            
+            let valueToFill = '';
+            
+            if (lowerName.includes('name')) {
+              valueToFill = userData.cardName;
+            } else if (lowerName.includes('number')) {
+              valueToFill = userData.cardNumber;
+            } else if (lowerName.includes('cvv') || lowerName.includes('security')) {
+              valueToFill = userData.cardCVV;
+            } else if (lowerName.includes('zip') || lowerName.includes('postal')) {
+              valueToFill = userData.zip;
+            } else if (lowerName.includes('month')) {
+              const { month } = parseExpirationDate(userData.cardExp);
+              valueToFill = month;
+            } else if (lowerName.includes('year')) {
+              const { year } = parseExpirationDate(userData.cardExp);
+              valueToFill = year;
+            }
+            
+            if (valueToFill) {
+              console.log(`Attempting to fill field: ${name}`);
+              fillField(field, valueToFill);
+              filledCount++;
+            }
+          } catch (err) {
+            console.warn(`Error filling field: ${err.message}`);
+          }
+        }
+      }
+    }
+    
+    // Second approach: Try advanced iframe field filling
+    try {
+      // Using a more aggressive approach to fill fields
+      const formFields = findAllFormFields();
+      
+      for (const field of formFields) {
+        try {
+          // Determine which data to fill based on field attributes
+          const fieldType = determineFieldType(field);
+          if (!fieldType) continue;
+          
+          let valueToFill = '';
+          
+          switch(fieldType) {
+            case 'cardName':
+              valueToFill = userData.cardName;
+              break;
+            case 'cardNumber':
+              valueToFill = userData.cardNumber;
+              break;
+            case 'cardCVV':
+              valueToFill = userData.cardCVV;
+              break;
+            case 'cardExpMonth':
+              const { month } = parseExpirationDate(userData.cardExp);
+              valueToFill = month;
+              break;
+            case 'cardExpYear':
+              const { year } = parseExpirationDate(userData.cardExp);
+              valueToFill = year;
+              break;
+            case 'zip':
+              valueToFill = userData.zip;
+              break;
+          }
+          
+          if (valueToFill) {
+            console.log(`Attempting to fill ${fieldType} field using advanced method`);
+            const success = attemptFieldFill(field, valueToFill);
+            if (success) filledCount++;
+          }
+        } catch (err) {
+          console.warn(`Error in advanced field filling: ${err.message}`);
+        }
+      }
+    } catch (err) {
+      console.warn(`Error in advanced iframe filling: ${err.message}`);
+    }
+    
+    // If we couldn't fill fields directly, use the payment helper as fallback
+    if (filledCount === 0) {
+      console.log("Direct filling failed, showing payment helper");
+      showPaymentHelper(userData);
+    } else {
+      console.log(`Successfully filled ${filledCount} payment fields`);
+    }
+    
+    return { success: true, count: filledCount };
+  } catch (error) {
+    console.error("Error filling payment fields:", error);
+    return { success: false, count: 0, error: error.message };
+  }
+}
+
+/**
+ * Find all form fields on the page including those in accessible iframes
+ * @returns {Array} Array of form field elements
+ */
+function findAllFormFields() {
+  const fields = [];
+  
+  // First, get all inputs, selects on the main document
+  const mainFields = document.querySelectorAll('input, select');
+  mainFields.forEach(field => fields.push(field));
+  
+  // Try to access same-origin iframes (may not work with cross-origin iframes)
+  try {
+    const iframes = document.querySelectorAll('iframe');
+    iframes.forEach(iframe => {
+      try {
+        if (iframe.contentDocument) {
+          const iframeFields = iframe.contentDocument.querySelectorAll('input, select');
+          iframeFields.forEach(field => fields.push(field));
+        }
+      } catch (e) {
+        // Ignore cross-origin iframe errors
+      }
+    });
+  } catch (e) {
+    // Ignore errors from accessing iframes
+  }
+  
+  return fields;
+}
+
+/**
+ * Determine the type of field based on its attributes
+ * @param {HTMLElement} field - The field to analyze
+ * @returns {string|null} The field type or null if unknown
+ */
+function determineFieldType(field) {
+  // Get all available attributes
+  const id = field.id?.toLowerCase() || '';
+  const name = field.name?.toLowerCase() || '';
+  const placeholder = field.placeholder?.toLowerCase() || '';
+  const ariaLabel = field.getAttribute('aria-label')?.toLowerCase() || '';
+  const type = field.type?.toLowerCase() || '';
+  const className = field.className?.toLowerCase() || '';
+  
+  // Check for credit card name
+  if (id.includes('card') && id.includes('name') || 
+      name.includes('card') && name.includes('name') ||
+      name.includes('cardholder') ||
+      placeholder.includes('name on card') ||
+      ariaLabel.includes('name on card')) {
+    return 'cardName';
+  }
+  
+  // Check for credit card number
+  if (id.includes('card') && id.includes('number') || 
+      name.includes('card') && name.includes('number') ||
+      name.includes('cardnumber') ||
+      placeholder.includes('card number') ||
+      ariaLabel.includes('card number')) {
+    return 'cardNumber';
+  }
+  
+  // Check for CVV
+  if (id.includes('cvv') || id.includes('cvc') || id.includes('security') ||
+      name.includes('cvv') || name.includes('cvc') || name.includes('security') ||
+      placeholder.includes('cvv') || placeholder.includes('security code') ||
+      ariaLabel.includes('cvv') || ariaLabel.includes('security code')) {
+    return 'cardCVV';
+  }
+  
+  // Check for expiration month
+  if ((id.includes('expir') || name.includes('expir')) && 
+      (id.includes('month') || name.includes('month'))) {
+    return 'cardExpMonth';
+  }
+  
+  // Check for expiration year
+  if ((id.includes('expir') || name.includes('expir')) && 
+      (id.includes('year') || name.includes('year'))) {
+    return 'cardExpYear';
+  }
+  
+  // Check for ZIP/postal code
+  if (id.includes('zip') || id.includes('postal') ||
+      name.includes('zip') || name.includes('postal') ||
+      placeholder.includes('zip') || placeholder.includes('postal') ||
+      ariaLabel.includes('zip') || ariaLabel.includes('postal')) {
+    return 'zip';
+  }
+  
+  return null;
+}
+
+/**
+ * More aggressive approach to fill a field
+ * @param {HTMLElement} field - The field to fill
+ * @param {string} value - The value to fill
+ * @returns {boolean} Whether filling was successful
+ */
+function attemptFieldFill(field, value) {
+  try {
+    // First try normal value setting
+    const originalValue = field.value;
+    field.value = value;
+    
+    // Dispatch input and change events
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // If that didn't work (value didn't change), try more aggressive approaches
+    if (field.value !== value && field.value === originalValue) {
+      // Try using property descriptor if available
+      try {
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(field, value);
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      } catch (e) {
+        // Ignore errors with property descriptor approach
+      }
+      
+      // Try focus and keyboard simulation approach
+      try {
+        field.focus();
+        field.select();
+        
+        // For each character in the value, simulate keypress
+        for (const char of value) {
+          field.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+          field.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+          field.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+        }
+        
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch (e) {
+        // Ignore errors with keyboard simulation
+      }
+    }
+    
+    // Return success if value was set
+    return field.value === value;
+  } catch (error) {
+    console.warn(`Field fill attempt failed: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Parse expiration date string into month and year
+ * @param {string} expDate - Expiration date string (e.g., "MM/YY")
+ * @returns {Object} Object with month and year
+ */
+function parseExpirationDate(expDate) {
+  if (!expDate) {
+    return { month: '', year: '' };
+  }
+  
+  // Handle various formats
+  const match = expDate.match(/(\d{1,2})[\/\-\s]?(\d{2,4})/);
+  if (match) {
+    const month = match[1].padStart(2, '0');
+    let year = match[2];
+    
+    // Convert 2-digit year to 4-digit
+    if (year.length === 2) {
+      year = '20' + year;
+    }
+    
+    return { month, year };
+  }
+  
+  return { month: '', year: '' };
+}
+
+/**
+ * Fill a form field with the given value
+ * @param {HTMLElement} field - The field to fill
+ * @param {string} value - The value to fill
+ * @returns {boolean} Whether filling was successful
+ */
+function fillField(field, value) {
+  if (!field || !value) return false;
+  
+  try {
+    // Handle select elements differently
+    if (field.tagName === 'SELECT') {
+      return fillSelectField(field, value);
+    }
+    
+    // For text inputs, set value and trigger events
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    return true;
+  } catch (error) {
+    console.error(`Error filling field:`, error);
+    return false;
+  }
+}
+
+/**
+ * Fill a select field with the given value
+ * @param {HTMLSelectElement} field - The select field to fill
+ * @param {string} value - The value to select
+ * @returns {boolean} Whether filling was successful
+ */
+function fillSelectField(field, value) {
+  try {
+    // Get all options
+    const options = Array.from(field.options);
+    
+    // Try direct value match
+    let match = options.find(opt => opt.value === value);
+    
+    // If no match, try text content match
+    if (!match) {
+      match = options.find(opt => opt.text === value || opt.text.includes(value));
+    }
+    
+    // If still no match, try numeric match
+    if (!match && !isNaN(parseInt(value))) {
+      const numValue = parseInt(value);
+      match = options.find(opt => {
+        const optNum = parseInt(opt.value);
+        return !isNaN(optNum) && optNum === numValue;
+      });
+    }
+    
+    // Set the value if found
+    if (match) {
+      field.value = match.value;
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error(`Error filling select field:`, error);
+    return false;
+  }
+}
+
+/**
+ * Create a visual helper that shows payment data
+ * @param {Object} data - The payment data to display
+ */
+function showPaymentHelper(data = {}) {
+  // First check if we already have a helper
+  if (document.getElementById('tesla-payment-helper')) {
+    console.log('Payment helper already exists');
+    return;
+  }
+  
+  // Create the helper overlay
+  const helper = document.createElement('div');
+  helper.id = 'tesla-payment-helper';
+  helper.style.cssText = `
+    position: fixed;
+    top: 20px; 
+    left: 20px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    z-index: 10000;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    width: 250px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
+  `;
+  
+  // Extract expiration date
+  let { month, year } = parseExpirationDate(data.cardExp || '');
+  
+  // Helper content
+  helper.innerHTML = `
+    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+      <strong style="font-size: 16px;">Payment Information</strong>
+      <span id="tesla-helper-close" style="cursor: pointer; font-size: 16px;">×</span>
+    </div>
+    <div style="margin-bottom: 15px; font-size: 12px; color: #aaa;">
+      These fields are in secure iframes and must be filled manually
+    </div>
+    <div style="margin-bottom: 8px;">
+      <div style="color: #888; font-size: 12px; margin-bottom: 2px;">Name on Card:</div>
+      <div style="padding: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; user-select: all;">${data.cardName || 'Not set'}</div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <div style="color: #888; font-size: 12px; margin-bottom: 2px;">Card Number:</div>
+      <div style="padding: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; user-select: all;">${data.cardNumber || 'Not set'}</div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <div style="color: #888; font-size: 12px; margin-bottom: 2px;">Expiration Date:</div>
+      <div style="padding: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; user-select: all;">${month || '--'}/${year || '----'}</div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <div style="color: #888; font-size: 12px; margin-bottom: 2px;">CVV/Security Code:</div>
+      <div style="padding: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; user-select: all;">${data.cardCVV || 'Not set'}</div>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <div style="color: #888; font-size: 12px; margin-bottom: 2px;">Billing ZIP/Postal Code:</div>
+      <div style="padding: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; user-select: all;">${data.zip || 'Not set'}</div>
+    </div>
+    <div style="margin-top: 15px; font-size: 12px; color: #aaa; text-align: center;">
+      Click on a field to copy its value
+    </div>
+  `;
+  
+  // Add to page
+  document.body.appendChild(helper);
+  
+  // Make the helper draggable
+  makeElementDraggable(helper);
+  
+  // Add copy functionality to fields
+  const fieldContainers = helper.querySelectorAll('[style*="user-select: all"]');
+  fieldContainers.forEach(container => {
+    container.addEventListener('click', () => {
+      const text = container.textContent;
+      if (text && text !== 'Not set') {
+        navigator.clipboard.writeText(text)
+          .then(() => {
+            // Show success feedback
+            const originalBackground = container.style.background;
+            container.style.background = 'rgba(16, 185, 129, 0.3)';
+            setTimeout(() => {
+              container.style.background = originalBackground;
+            }, 1000);
+          })
+          .catch(err => {
+            console.error('Failed to copy text: ', err);
+          });
+      }
+    });
+  });
+  
+  // Add close functionality
+  document.getElementById('tesla-helper-close').addEventListener('click', () => {
+    helper.style.opacity = '0';
+    setTimeout(() => {
+      helper.remove();
+    }, 300);
+  });
+  
+  // Try to highlight corresponding fields on the page
+  highlightPaymentFields();
+}
+
+/**
+ * Make an element draggable
+ * @param {HTMLElement} element - The element to make draggable
+ */
+function makeElementDraggable(element) {
+  let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+  
+  const header = element.querySelector('strong') || element;
+  header.style.cursor = 'move';
+  
+  header.onmousedown = dragMouseDown;
+  
+  function dragMouseDown(e) {
+    e = e || window.event;
+    e.preventDefault();
+    // Get the mouse cursor position at startup
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    document.onmouseup = closeDragElement;
+    // Call a function whenever the cursor moves
+    document.onmousemove = elementDrag;
+  }
+  
+  function elementDrag(e) {
+    e = e || window.event;
+    e.preventDefault();
+    // Calculate the new cursor position
+    pos1 = pos3 - e.clientX;
+    pos2 = pos4 - e.clientY;
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    // Set the element's new position
+    element.style.top = (element.offsetTop - pos2) + "px";
+    element.style.left = (element.offsetLeft - pos1) + "px";
+  }
+  
+  function closeDragElement() {
+    // Stop moving when mouse button is released
+    document.onmouseup = null;
+    document.onmousemove = null;
+  }
+}
+
+/**
+ * Highlight payment fields on the page
+ */
+function highlightPaymentFields() {
+  // Define field selectors for common payment providers
+  const fieldSelectors = [
+    // Card number containers
+    '.card-number-frame', '[data-card="number"]', '.CardNumberField', '[id*="card-number"]',
+    // Cardholder name containers
+    '.card-name-container', '.CardholderField', '[id*="card-name"]',
+    // Expiry containers
+    '.card-expiry-frame', '.ExpiryField', '[id*="expiry"]',
+    // CVV containers
+    '.card-cvc-frame', '.CvvField', '[id*="cvv"]', '[id*="cvc"]',
+    // ZIP code containers
+    '.postal-code-container', '.ZipField', '[id*="postal"]', '[id*="zip"]'
+  ];
+  
+  // Try to find all possible payment fields
+  const possibleContainers = [];
+  fieldSelectors.forEach(selector => {
+    try {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(el => possibleContainers.push(el));
+    } catch (e) {
+      // Ignore selector errors
+    }
+  });
+  
+  // Also look for iframes that might contain payment fields
+  const iframes = document.querySelectorAll('iframe');
+  iframes.forEach(iframe => {
+    try {
+      possibleContainers.push(iframe);
+    } catch (e) {
+      // Ignore errors
+    }
+  });
+  
+  // Add visual highlights to these containers
+  possibleContainers.forEach(container => {
+    try {
+      const originalBoxShadow = container.style.boxShadow;
+      const originalPosition = container.style.position;
+      
+      // Add a pulse effect
+      container.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
+      container.style.position = originalPosition === 'static' ? 'relative' : originalPosition;
+      
+      // Add transition for smooth effect
+      container.style.transition = 'box-shadow 0.5s ease';
+      
+      // Pulse effect
+      setTimeout(() => {
+        container.style.boxShadow = '0 0 0 5px rgba(59, 130, 246, 0.3)';
+        setTimeout(() => {
+          container.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
+        }, 500);
+      }, 500);
+    } catch (e) {
+      // Ignore styling errors
+    }
+  });
+  
+  console.log(`Highlighted ${possibleContainers.length} potential payment fields`);
+}

@@ -283,6 +283,14 @@ async function toggleMonitoring() {
       showNotification(message, true);
       
       const response = await sendMessage({ action: 'stopMonitoring' });
+
+      // In popup.js checkInventoryNow function or wherever you process the response
+      if (response && response.method === "browser") {
+        const message = currentSettings.region === 'TR' ? 
+          'API engellendiği için tarayıcı kullanıldı.' : 
+          'Using browser extraction (API blocked)';
+        showNotification(message, true);
+      }
       
       if (response && response.success) {
         isMonitoring = false;
@@ -426,10 +434,27 @@ async function checkInventoryNow() {
           'No matching vehicles found';
         showNotification(emptyMessage, true);
       }
+      
+      // Check if browser method was used
+      if (response.method === "browser") {
+        const browserMessage = currentSettings.region === 'TR' ? 
+          'API engellendiği için tarayıcı kullanıldı.' : 
+          'Used browser method (API blocked). Results may vary.';
+        showNotification(browserMessage, true);
+      }
+    } else if (response && response.fallback) {
+      // Handle fallback case - API access is blocked by Tesla
+      const fallbackMessage = currentSettings.region === 'TR' ? 
+        'Tesla API erişimi engellendi. Lütfen "Tesla Envanterini Aç" düğmesini kullanın.' : 
+        'Tesla API access blocked. Please use the "Open Tesla Inventory" button instead.';
+      showNotification(fallbackMessage, false);
+      
+      // Automatically open Tesla inventory in new tab if fallback is recommended
+      openTeslaInventory();
     } else {
-      const errorMessage = currentSettings.region === 'TR' ? 
+      const errorMessage = response?.error || (currentSettings.region === 'TR' ? 
         'Envanter kontrol edilemedi' : 
-        'Failed to check inventory';
+        'Failed to check inventory');
       showNotification(errorMessage, false);
     }
   } catch (err) {

@@ -139,16 +139,18 @@ async function updateUIForRegion(region) {
   // Update price label with correct currency
   if (region === "TR") {
     $("price-label").textContent = "Price Threshold (₺):";
-    $('.tc-field').style.display = "block";
+    const tcField = document.querySelector('.tc-field');
+    if (tcField) tcField.style.display = "block";
   } else {
     $("price-label").textContent = "Price Threshold ($):";
-    $('.tc-field').style.display = "none";
+    const tcField = document.querySelector('.tc-field');
+    if (tcField) tcField.style.display = "none";
   }
   
   // Get current model
   const model = await getModel();
   
-  // Update trim levels for the model
+  // Update trim options for the model
   updateTrimOptions(model);
 }
 
