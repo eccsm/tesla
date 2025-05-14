@@ -20,7 +20,10 @@
     "tabs",
     "scripting",
     "alarms",
-    "notifications"
+    "notifications",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "offscreen"
   ],
   "host_permissions": [
     "https://www.tesla.com/*"

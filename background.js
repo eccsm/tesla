@@ -45,8 +45,8 @@ const StorageManager = {
 // Tesla Inventory Service
 // ========================
 const TeslaInventoryService = {
-  // Base API URL for inventory
-  API_URL: "https://www.tesla.com/inventory/api/v1/inventory-results",
+  API_VERSION: "v4",   // centralise version
+  API_URL: `https://www.tesla.com/inventory/api/${this.API_VERSION}/inventory-results`,
   
   // Region-specific configurations with detailed settings
   REGION_CONFIGS: {
@@ -129,6 +129,7 @@ const TeslaInventoryService = {
     console.log('Tesla Inventory Service initialized');
     return this;
   },
+  
   
   /**
    * Create a safe fetch function with timeout and retry capability
@@ -232,7 +233,9 @@ const TeslaInventoryService = {
         offset: 0,
         count: 50, // Reduced count to avoid suspicion
         outsideOffset: 0,
-        outsideSearch: false
+        outsideSearch: false,
+        isFalconDeliverySelectionEnabled: false,
+        version: "v4"
       };
       
       // Add trim levels if provided
@@ -249,33 +252,24 @@ const TeslaInventoryService = {
       const localQuery = JSON.stringify(queryObject);
       
       // Determine if we're using the TR or US endpoint
-      const baseApiUrl = options.region === "TR" 
-        ? "https://www.tesla.com/tr_TR/inventory/api/v1/inventory-results"
-        : "https://www.tesla.com/inventory/api/v1/inventory-results";
+      const baseApiUrl = options.region === "TR"
+       ? `https://www.tesla.com/tr_TR/inventory/api/${this.API_VERSION}/inventory-results`
+       : `https://www.tesla.com/inventory/api/${this.API_VERSION}/inventory-results`;
       
       const localUrl = `${baseApiUrl}?query=${encodeURIComponent(localQuery)}`;
       
       console.log("Fetching Tesla inventory with browser-like request...");
       
-      // Create proper headers to mimic a real browser
       const headers = {
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': options.region === "TR" ? 'tr-TR,tr;q=0.9' : 'en-US,en;q=0.9',
-        'Referer': options.region === "TR" 
-          ? 'https://www.tesla.com/tr_TR/inventory/new/my'
-          : 'https://www.tesla.com/inventory/new/my',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Connection': 'keep-alive',
-        'DNT': '1'
+        'Accept-Language': options.region === "TR"
+          ? 'tr-TR,tr;q=0.9'
+          : 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+                      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       };
+      
+      
       
       try {
         // Use fetch with proper headers
@@ -1079,6 +1073,36 @@ const InventoryMonitor = {
 // Initialize the services
 console.log("Starting Tesla AutoPilot service worker initialization...");
 TeslaInventoryService.initialize();
+// === inject Tesla‐expected headers via declarativeNetRequest ===
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [1001],
+    addRules: [{
+      id:       1001,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [
+          { header: "Origin",             operation: "set", value: "https://www.tesla.com" },
+          { header: "Referer",            operation: "set", value: "https://www.tesla.com/inventory" },
+          { header: "sec-ch-ua",          operation: "set", value: "\"Google Chrome\";v=\"124\", \"Chromium\";v=\"124\", \"Not A(Brand\";v=\"99\"" },
+          { header: "sec-ch-ua-mobile",   operation: "set", value: "?0" },
+          { header: "sec-ch-ua-platform", operation: "set", value: "\"Windows\"" },
+          { header: "Sec-Fetch-Site",     operation: "set", value: "same-origin" },
+          { header: "Sec-Fetch-Mode",     operation: "set", value: "cors" },
+          { header: "Sec-Fetch-Dest",     operation: "set", value: "empty" }
+        ]
+      },
+      condition: {
+        urlFilter: "tesla.com/inventory/api/",
+        resourceTypes: ["xmlhttprequest", "fetch"]
+      }
+    }]
+  });
+});
+// =============================================================
+
+
 InventoryMonitor.initialize();
 
 // Handle messages from popup or content scripts
