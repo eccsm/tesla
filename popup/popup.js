@@ -1,5 +1,12 @@
-// Enhanced Tesla AutoPilot Popup Script
-// Fixed version with Turkish support and improved error handling
+/**
+ * Tesla AutoPilot Enhanced Popup Script
+ * 
+ * Handles all UI interactions in the extension popup, including inventory
+ * monitoring, form filling, and settings management.
+ */
+
+import { CONFIG, ACTION_TYPES, STORAGE_KEYS } from '../shared/constants.js';
+import { formatPrice, sendMessageToBackground, getLocalizedMessage } from '../shared/utils.js';
 
 // State
 let isMonitoring = false;
@@ -11,13 +18,11 @@ let currentSettings = {
   pollingInterval: 5
 };
 
-// Default prices by region
-const DEFAULT_PRICES = {
-  US: 45000,
-  TR: 1500000
-};
-
-// Show a notification in the popup
+/**
+ * Show a notification in the popup
+ * @param {string} message - Message text
+ * @param {boolean} isSuccess - Whether it's a success notification
+ */
 function showNotification(message, isSuccess = true) {
   const notification = document.getElementById('notification');
   notification.textContent = message;
@@ -30,7 +35,10 @@ function showNotification(message, isSuccess = true) {
   }, 3000);
 }
 
-// Update the UI language based on the selected region
+/**
+ * Update the UI language based on the selected region
+ * @param {string} region - Region code (e.g., 'US', 'TR')
+ */
 function updateUILanguage(region) {
   if (region === 'TR') {
     document.body.classList.add('locale-tr');
@@ -61,59 +69,61 @@ function updateUILanguage(region) {
   }
 }
 
-// Update monitoring UI
+/**
+ * Update monitoring UI
+ */
 function updateMonitoringUI() {
-  const monitorStats = document.getElementById('monitor-stats');
-  const monitorStatus = monitorStats.querySelector('.status');
+  const monitorStatus = document.getElementById('monitor-status');
+  const statusIndicator = monitorStatus.querySelector('.status-indicator');
+  const statusText = monitorStatus.querySelector('.status-text');
   const monitorDetails = document.getElementById('monitor-details');
-  const monitorBtn = document.getElementById('monitor-btn');
+  const monitorToggleBtn = document.getElementById('monitor-toggle-btn');
   
   if (isMonitoring) {
-    monitorStats.classList.add('active');
-    monitorStatus.classList.remove('inactive');
     monitorStatus.classList.add('active');
+    statusIndicator.classList.remove('inactive');
+    statusIndicator.classList.add('active');
     
     if (currentSettings.region === 'TR') {
-      monitorStatus.innerHTML = '<span class="locale-text-tr">İzleme: Aktif</span><span class="locale-text-en">Monitoring: Active</span>';
+      statusText.innerHTML = '<span class="locale-text-tr">İzleme: Aktif</span><span class="locale-text-en">Monitoring: Active</span>';
     } else {
-      monitorStatus.innerHTML = '<span class="locale-text-en">Monitoring: Active</span><span class="locale-text-tr">İzleme: Aktif</span>';
+      statusText.innerHTML = '<span class="locale-text-en">Monitoring: Active</span><span class="locale-text-tr">İzleme: Aktif</span>';
     }
     
     monitorDetails.style.display = 'block';
     
     if (currentSettings.region === 'TR') {
-      monitorBtn.innerHTML = '<span class="locale-text-tr">İzlemeyi Durdur</span><span class="locale-text-en">Stop Monitoring</span>';
+      monitorToggleBtn.innerHTML = '<span class="locale-text-tr">Durdur</span><span class="locale-text-en">Stop</span>';
     } else {
-      monitorBtn.innerHTML = '<span class="locale-text-en">Stop Monitoring</span><span class="locale-text-tr">İzlemeyi Durdur</span>';
+      monitorToggleBtn.innerHTML = '<span class="locale-text-en">Stop</span><span class="locale-text-tr">Durdur</span>';
     }
     
-    monitorBtn.classList.remove('btn-success');
-    monitorBtn.classList.add('btn-stop');
+    monitorToggleBtn.classList.remove('btn-success');
+    monitorToggleBtn.classList.add('btn-stop');
   } else {
-    monitorStats.classList.remove('active');
     monitorStatus.classList.remove('active');
-    monitorStatus.classList.add('inactive');
+    statusIndicator.classList.remove('active');
+    statusIndicator.classList.add('inactive');
     
     if (currentSettings.region === 'TR') {
-      monitorStatus.innerHTML = '<span class="locale-text-tr">İzleme: Pasif</span><span class="locale-text-en">Monitoring: Inactive</span>';
+      statusText.innerHTML = '<span class="locale-text-tr">İzleme: Pasif</span><span class="locale-text-en">Monitoring: Inactive</span>';
     } else {
-      monitorStatus.innerHTML = '<span class="locale-text-en">Monitoring: Inactive</span><span class="locale-text-tr">İzleme: Pasif</span>';
+      statusText.innerHTML = '<span class="locale-text-en">Monitoring: Inactive</span><span class="locale-text-tr">İzleme: Pasif</span>';
     }
     
     monitorDetails.style.display = 'none';
     
     if (currentSettings.region === 'TR') {
-      monitorBtn.innerHTML = '<span class="locale-text-tr">İzlemeyi Başlat</span><span class="locale-text-en">Start Monitoring</span>';
+      monitorToggleBtn.innerHTML = '<span class="locale-text-tr">Başlat</span><span class="locale-text-en">Start</span>';
     } else {
-      monitorBtn.innerHTML = '<span class="locale-text-en">Start Monitoring</span><span class="locale-text-tr">İzlemeyi Başlat</span>';
+      monitorToggleBtn.innerHTML = '<span class="locale-text-en">Start</span><span class="locale-text-tr">Başlat</span>';
     }
     
-    monitorBtn.classList.remove('btn-stop');
-    monitorBtn.classList.add('btn-success');
+    monitorToggleBtn.classList.remove('btn-stop');
+    monitorToggleBtn.classList.add('btn-success');
   }
   
   // Update details text
-  document.getElementById('poll-interval').textContent = currentSettings.pollingInterval;
   document.getElementById('monitor-model').textContent = getModelName(currentSettings.model);
   
   // Format currency by region
@@ -124,7 +134,11 @@ function updateMonitoringUI() {
   }
 }
 
-// Get full model name
+/**
+ * Get full model name from model code
+ * @param {string} modelCode - Model code (e.g., 'm3', 'my') 
+ * @returns {string} Full model name
+ */
 function getModelName(modelCode) {
   const models = {
     'm3': 'Model 3',
@@ -135,7 +149,10 @@ function getModelName(modelCode) {
   return models[modelCode] || modelCode.toUpperCase();
 }
 
-// Update the last updated timestamp
+/**
+ * Update the last updated timestamp
+ * @param {string} timestamp - Timestamp to display
+ */
 function updateLastUpdated(timestamp) {
   const lastUpdated = document.getElementById('lastUpdated');
   if (timestamp) {
@@ -151,32 +168,37 @@ function updateLastUpdated(timestamp) {
   }
 }
 
-// Check if we're on a Tesla page
+/**
+ * Check if we're on a Tesla page
+ * @returns {Promise<boolean>} Whether we're on a Tesla page
+ */
 async function checkIfTeslaPage() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return tab && tab.url && tab.url.includes('tesla.com');
+    const tabs = await new Promise(resolve => {
+      chrome.tabs.query({ active: true, currentWindow: true }, resolve);
+    });
+    
+    if (tabs.length === 0) return false;
+    
+    const tab = tabs[0];
+    return tab.url && tab.url.includes('tesla.com');
   } catch (err) {
     console.error('Error checking if Tesla page:', err);
     return false;
   }
 }
 
-// Load settings from storage
+/**
+ * Load settings from storage
+ */
 async function loadSettings() {
   try {
-    const data = await new Promise((resolve) => {
+    // Get data from storage
+    const data = await new Promise(resolve => {
       chrome.storage.sync.get([
         'region', 'model', 'condition', 'priceFloor', 'pollingInterval', 'isMonitoring', 
-        'lastInventoryCheck', 'monitoringFilters', 'monitoringInterval'
-      ], (result) => {
-        if (chrome.runtime.lastError) {
-          console.error("Storage error:", chrome.runtime.lastError);
-          resolve({});
-        } else {
-          resolve(result);
-        }
-      });
+        'lastInventoryCheck', 'monitoringFilters', 'monitoringInterval', 'zip'
+      ], resolve);
     });
     
     // Update current settings
@@ -185,7 +207,7 @@ async function loadSettings() {
     currentSettings.condition = data.condition || 'new';
     
     // Set default price based on region
-    const defaultPrice = DEFAULT_PRICES[currentSettings.region] || 45000;
+    const defaultPrice = currentSettings.region === 'TR' ? 1590000 : 45000;
     currentSettings.priceMax = parseInt(data.priceFloor) || defaultPrice;
     currentSettings.pollingInterval = data.pollingInterval || 5;
     
@@ -197,6 +219,11 @@ async function loadSettings() {
     document.getElementById('condition').value = currentSettings.condition;
     document.getElementById('price-input').value = currentSettings.priceMax;
     document.getElementById('poll-interval-input').value = currentSettings.pollingInterval;
+    
+    // Set ZIP code if available
+    if (data.zip) {
+      document.getElementById('zip-input').value = data.zip;
+    }
     
     // Check if monitoring is active
     if (data.isMonitoring) {
@@ -253,26 +280,47 @@ async function loadSettings() {
   }
 }
 
-// Save settings to storage
+/**
+ * Save settings to storage
+ */
 async function saveSettings() {
-  return new Promise((resolve, reject) => {
-    chrome.storage.sync.set({
-      region: currentSettings.region,
-      model: currentSettings.model,
-      condition: currentSettings.condition,
-      priceFloor: currentSettings.priceMax,
-      pollingInterval: currentSettings.pollingInterval
-    }, () => {
-      if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
-      } else {
-        resolve();
-      }
+  try {
+    // Get values from UI
+    const model = document.getElementById('model').value;
+    const condition = document.getElementById('condition').value;
+    const priceMax = parseInt(document.getElementById('price-input').value) || 
+                     (currentSettings.region === 'TR' ? 1590000 : 45000);
+    const pollingInterval = parseInt(document.getElementById('poll-interval-input').value) || 5;
+    const zip = document.getElementById('zip-input').value;
+    
+    // Save to storage
+    await new Promise(resolve => {
+      chrome.storage.sync.set({
+        region: currentSettings.region,
+        model: model,
+        condition: condition,
+        priceFloor: priceMax,
+        pollingInterval: pollingInterval,
+        zip: zip
+      }, resolve);
     });
-  });
+    
+    // Update current settings
+    currentSettings.model = model;
+    currentSettings.condition = condition;
+    currentSettings.priceMax = priceMax;
+    currentSettings.pollingInterval = pollingInterval;
+    
+    return true;
+  } catch (err) {
+    console.error('Error saving settings:', err);
+    return false;
+  }
 }
 
-// Toggle monitoring
+/**
+ * Toggle monitoring state
+ */
 async function toggleMonitoring() {
   try {
     if (isMonitoring) {
@@ -282,15 +330,9 @@ async function toggleMonitoring() {
         'Stopping monitoring...';
       showNotification(message, true);
       
-      const response = await sendMessage({ action: 'stopMonitoring' });
-
-      // In popup.js checkInventoryNow function or wherever you process the response
-      if (response && response.method === "browser") {
-        const message = currentSettings.region === 'TR' ? 
-          'API engellendiği için tarayıcı kullanıldı.' : 
-          'Using browser extraction (API blocked)';
-        showNotification(message, true);
-      }
+      const response = await sendMessageToBackground({ 
+        action: ACTION_TYPES.STOP_MONITORING 
+      });
       
       if (response && response.success) {
         isMonitoring = false;
@@ -313,42 +355,27 @@ async function toggleMonitoring() {
         'Starting monitoring...';
       showNotification(message, true);
       
-      // Get current values
-      const model = document.getElementById('model').value;
-      const condition = document.getElementById('condition').value;
-      const priceMax = parseInt(document.getElementById('price-input').value) || DEFAULT_PRICES[currentSettings.region];
-      const pollingInterval = parseInt(document.getElementById('poll-interval-input').value) || 5;
-      
-      // Update current settings
-      currentSettings.model = model;
-      currentSettings.condition = condition;
-      currentSettings.priceMax = priceMax;
-      currentSettings.pollingInterval = pollingInterval;
-      
       // Save settings first
       await saveSettings();
-      
-      // Get filters from storage
-      const storageData = await new Promise((resolve) => {
-        chrome.storage.sync.get(['trimLevels', 'autopilot', 'zip'], resolve);
-      });
       
       // Build filters
       const filters = {
         region: currentSettings.region,
-        model: model,
-        condition: condition,
-        priceMax: priceMax,
-        trimLevels: storageData.trimLevels || null,
-        autopilot: storageData.autopilot || null,
-        zip: storageData.zip || null
+        model: document.getElementById('model').value,
+        condition: document.getElementById('condition').value,
+        priceMax: parseInt(document.getElementById('price-input').value) || 
+                  (currentSettings.region === 'TR' ? 1590000 : 45000),
+        zip: document.getElementById('zip-input').value
       };
       
-      // Send start monitoring message
-      const response = await sendMessage({
-        action: 'startMonitoring',
+      // Get interval
+      const interval = parseInt(document.getElementById('poll-interval-input').value) || 5;
+      
+      // Start monitoring
+      const response = await sendMessageToBackground({
+        action: ACTION_TYPES.START_MONITORING,
         filters: filters,
-        interval: pollingInterval
+        interval: interval
       });
       
       if (response && response.success) {
@@ -376,7 +403,9 @@ async function toggleMonitoring() {
   }
 }
 
-// Check inventory now
+/**
+ * Check inventory now
+ */
 async function checkInventoryNow() {
   try {
     const message = currentSettings.region === 'TR' ? 
@@ -384,38 +413,22 @@ async function checkInventoryNow() {
       'Checking Tesla inventory...';
     showNotification(message, true);
     
-    // Get current values
-    const model = document.getElementById('model').value;
-    const condition = document.getElementById('condition').value;
-    const priceMax = parseInt(document.getElementById('price-input').value) || DEFAULT_PRICES[currentSettings.region];
-    
-    // Update current settings
-    currentSettings.model = model;
-    currentSettings.condition = condition;
-    currentSettings.priceMax = priceMax;
-    
-    // Save settings
+    // Save settings first
     await saveSettings();
-    
-    // Get filters from storage
-    const storageData = await new Promise((resolve) => {
-      chrome.storage.sync.get(['trimLevels', 'autopilot', 'zip'], resolve);
-    });
     
     // Build filters
     const filters = {
       region: currentSettings.region,
-      model: model,
-      condition: condition,
-      priceMax: priceMax,
-      trimLevels: storageData.trimLevels || null,
-      autopilot: storageData.autopilot || null,
-      zip: storageData.zip || null
+      model: document.getElementById('model').value,
+      condition: document.getElementById('condition').value,
+      priceMax: parseInt(document.getElementById('price-input').value) || 
+                (currentSettings.region === 'TR' ? 1590000 : 45000),
+      zip: document.getElementById('zip-input').value
     };
     
-    // Send check inventory message
-    const response = await sendMessage({
-      action: 'checkInventory',
+    // Check inventory
+    const response = await sendMessageToBackground({
+      action: ACTION_TYPES.CHECK_INVENTORY,
       filters: filters
     });
     
@@ -428,28 +441,30 @@ async function checkInventoryNow() {
           `${resultCount} araç bulundu!` : 
           `Found ${resultCount} matching vehicles!`;
         showNotification(successMessage, true);
+        displayResults(response.results);
       } else {
         const emptyMessage = currentSettings.region === 'TR' ? 
           'Araç bulunamadı' : 
           'No matching vehicles found';
         showNotification(emptyMessage, true);
+        hideResults();
       }
       
       // Check if browser method was used
       if (response.method === "browser") {
         const browserMessage = currentSettings.region === 'TR' ? 
           'API engellendiği için tarayıcı kullanıldı.' : 
-          'Used browser method (API blocked). Results may vary.';
+          'Used browser method (API blocked).';
         showNotification(browserMessage, true);
       }
     } else if (response && response.fallback) {
-      // Handle fallback case - API access is blocked by Tesla
+      // API access is blocked by Tesla
       const fallbackMessage = currentSettings.region === 'TR' ? 
-        'Tesla API erişimi engellendi. Lütfen "Tesla Envanterini Aç" düğmesini kullanın.' : 
-        'Tesla API access blocked. Please use the "Open Tesla Inventory" button instead.';
+        'Tesla API erişimi engellendi. Tarayıcıda açılıyor.' : 
+        'Tesla API blocked. Opening in browser instead.';
       showNotification(fallbackMessage, false);
       
-      // Automatically open Tesla inventory in new tab if fallback is recommended
+      // Open Tesla inventory in browser
       openTeslaInventory();
     } else {
       const errorMessage = response?.error || (currentSettings.region === 'TR' ? 
@@ -467,26 +482,89 @@ async function checkInventoryNow() {
   }
 }
 
-// Helper function to send messages to background script with error handling
-async function sendMessage(message) {
-  return new Promise((resolve, reject) => {
-    try {
-      chrome.runtime.sendMessage(message, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error("Runtime error:", chrome.runtime.lastError);
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(response);
-        }
-      });
-    } catch (err) {
-      console.error("Send message error:", err);
-      reject(err);
-    }
+/**
+ * Display search results
+ * @param {Array} results - Array of vehicle results
+ */
+function displayResults(results) {
+  if (!results || results.length === 0) {
+    hideResults();
+    return;
+  }
+  
+  const resultsCard = document.getElementById('results-card');
+  const resultsContent = document.getElementById('results-content');
+  
+  // Clear existing content
+  resultsContent.innerHTML = '';
+  
+  // Create results content
+  const resultsList = document.createElement('div');
+  resultsList.style.cssText = 'max-height: 300px; overflow-y: auto; margin-bottom: 10px;';
+  
+  // Add result count
+  const countDiv = document.createElement('div');
+  countDiv.style.cssText = 'margin-bottom: 10px; font-weight: 500;';
+  countDiv.textContent = currentSettings.region === 'TR' ?
+    `${results.length} araç bulundu` :
+    `Found ${results.length} vehicles`;
+  resultsContent.appendChild(countDiv);
+  
+  // Add each result
+  results.slice(0, 10).forEach(vehicle => {
+    const resultItem = document.createElement('div');
+    resultItem.style.cssText = 'padding: 8px; margin-bottom: 6px; border-bottom: 1px solid #eee;';
+    
+    const modelName = document.createElement('div');
+    modelName.style.cssText = 'font-weight: 500;';
+    modelName.textContent = `${vehicle.model} ${vehicle.trim}`;
+    
+    const priceDiv = document.createElement('div');
+    priceDiv.textContent = vehicle.formattedPrice;
+    
+    const linkDiv = document.createElement('div');
+    linkDiv.style.cssText = 'margin-top: 5px;';
+    
+    const viewLink = document.createElement('a');
+    viewLink.href = vehicle.inventoryUrl;
+    viewLink.textContent = currentSettings.region === 'TR' ? 'Görüntüle' : 'View';
+    viewLink.style.cssText = 'color: #3b82f6; text-decoration: none; font-size: 13px;';
+    viewLink.target = '_blank';
+    
+    linkDiv.appendChild(viewLink);
+    
+    resultItem.appendChild(modelName);
+    resultItem.appendChild(priceDiv);
+    resultItem.appendChild(linkDiv);
+    
+    resultsList.appendChild(resultItem);
   });
+  
+  // If there are more results than we're showing
+  if (results.length > 10) {
+    const moreDiv = document.createElement('div');
+    moreDiv.style.cssText = 'text-align: center; margin-top: 5px; font-size: 13px; color: #666;';
+    moreDiv.textContent = currentSettings.region === 'TR' ?
+      `+${results.length - 10} daha araç...` :
+      `+${results.length - 10} more vehicles...`;
+    resultsList.appendChild(moreDiv);
+  }
+  
+  resultsContent.appendChild(resultsList);
+  resultsCard.style.display = 'block';
 }
 
-// Export to CSV
+/**
+ * Hide search results
+ */
+function hideResults() {
+  const resultsCard = document.getElementById('results-card');
+  resultsCard.style.display = 'none';
+}
+
+/**
+ * Export results to CSV
+ */
 async function exportToCSV() {
   try {
     const message = currentSettings.region === 'TR' ? 
@@ -494,7 +572,7 @@ async function exportToCSV() {
       'Exporting to CSV...';
     showNotification(message, true);
     
-    const response = await sendMessage({ action: 'downloadCSV' });
+    const response = await sendMessageToBackground({ action: ACTION_TYPES.DOWNLOAD_CSV });
     
     if (response && response.success) {
       const successMessage = currentSettings.region === 'TR' ? 
@@ -509,27 +587,21 @@ async function exportToCSV() {
     }
   } catch (err) {
     console.error('Error exporting to CSV:', err);
-    
-    const errorMessage = currentSettings.region === 'TR' ? 
-      'Hata: ' + err.message : 
-      'Error: ' + err.message;
-    showNotification(errorMessage, false);
+    showNotification('Error exporting CSV: ' + err.message, false);
   }
 }
 
-// Open Tesla inventory page
+/**
+ * Open Tesla inventory in browser
+ */
 async function openTeslaInventory() {
   try {
+    // Save settings first
+    await saveSettings();
+    
     // Get current values
     const model = document.getElementById('model').value;
     const condition = document.getElementById('condition').value;
-    
-    // Update current settings
-    currentSettings.model = model;
-    currentSettings.condition = condition;
-    
-    // Save settings
-    await saveSettings();
     
     // Determine base URL
     let baseUrl = 'https://www.tesla.com';
@@ -540,8 +612,30 @@ async function openTeslaInventory() {
     // Build URL
     const url = `${baseUrl}/inventory/${condition}/${model}`;
     
+    // Add query parameters
+    const params = new URLSearchParams();
+    
+    // Add price if provided
+    const priceMax = parseInt(document.getElementById('price-input').value);
+    if (priceMax) {
+      params.append("price", priceMax);
+    }
+    
+    // Add ZIP if provided
+    const zip = document.getElementById('zip-input').value;
+    if (zip) {
+      params.append("zip", zip);
+    }
+    
+    // Always sort by price
+    params.append("arrangeby", "Price");
+    
+    // Build the full URL
+    const queryString = params.toString();
+    const fullUrl = queryString ? `${url}?${queryString}` : url;
+    
     // Open URL in new tab
-    chrome.tabs.create({ url });
+    chrome.tabs.create({ url: fullUrl });
   } catch (err) {
     console.error('Error opening Tesla inventory:', err);
     
@@ -552,12 +646,17 @@ async function openTeslaInventory() {
   }
 }
 
-// Open options page
+/**
+ * Open options page
+ */
 function openOptions() {
   chrome.runtime.openOptionsPage();
 }
 
-// Change region
+/**
+ * Change region
+ * @param {string} region - Region code
+ */
 async function changeRegion(region) {
   if (region === currentSettings.region) return;
   
@@ -569,9 +668,8 @@ async function changeRegion(region) {
     updateUILanguage(region);
     
     // Update default price
-    const defaultPrice = DEFAULT_PRICES[region] || 45000;
+    const defaultPrice = region === 'TR' ? 1590000 : 45000;
     if (!document.getElementById('price-input').value) {
-      currentSettings.priceMax = defaultPrice;
       document.getElementById('price-input').value = defaultPrice;
     }
     
@@ -600,10 +698,123 @@ async function changeRegion(region) {
   }
 }
 
-// Add this function to popup/popup.js
-// Add it near the fillForm, fixValidation, and togglePanel functions
+/**
+ * Fill the form on the current page
+ */
+async function fillForm() {
+  const isTeslaPage = await checkIfTeslaPage();
+  if (!isTeslaPage) {
+    const message = currentSettings.region === 'TR' ? 
+      'Tesla sayfasında değilsiniz' : 
+      'Not on a Tesla page';
+    showNotification(message, false);
+    return;
+  }
+  
+  try {
+    const message = currentSettings.region === 'TR' ? 
+      'Form dolduruluyor...' : 
+      'Filling form...';
+    showNotification(message, true);
+    
+    const response = await sendMessageToBackground({ action: ACTION_TYPES.FILL_FORM });
+    
+    if (response && response.status === 'Form filled') {
+      const successMessage = currentSettings.region === 'TR' ? 
+        `${response.count || 0} alan başarıyla dolduruldu` : 
+        `Successfully filled ${response.count || 0} fields`;
+      showNotification(successMessage, true);
+    } else {
+      const errorMessage = currentSettings.region === 'TR' ? 
+        'Form doldurulamadı' : 
+        'Failed to fill form';
+      showNotification(errorMessage, false);
+    }
+  } catch (err) {
+    console.error('Error filling form:', err);
+    
+    const errorMessage = currentSettings.region === 'TR' ? 
+      'Form doldurulurken hata oluştu' : 
+      'Error filling form';
+    showNotification(errorMessage, false);
+  }
+}
 
-// Fill ZIP code dialog
+/**
+ * Fix validation errors on the current page
+ */
+async function fixValidation() {
+  const isTeslaPage = await checkIfTeslaPage();
+  if (!isTeslaPage) {
+    const message = currentSettings.region === 'TR' ? 
+      'Tesla sayfasında değilsiniz' : 
+      'Not on a Tesla page';
+    showNotification(message, false);
+    return;
+  }
+  
+  try {
+    const message = currentSettings.region === 'TR' ? 
+      'Doğrulama hataları düzeltiliyor...' : 
+      'Fixing validation errors...';
+    showNotification(message, true);
+    
+    const response = await sendMessageToBackground({ action: ACTION_TYPES.FIX_VALIDATION });
+    
+    if (response) {
+      const successMessage = currentSettings.region === 'TR' ? 
+        'Doğrulama hataları düzeltildi' : 
+        'Validation errors fixed';
+      showNotification(successMessage, true);
+    } else {
+      const errorMessage = currentSettings.region === 'TR' ? 
+        'Doğrulama hataları düzeltilemedi' : 
+        'Failed to fix validation errors';
+      showNotification(errorMessage, false);
+    }
+  } catch (err) {
+    console.error('Error fixing validation:', err);
+    
+    const errorMessage = currentSettings.region === 'TR' ? 
+      'Doğrulama hataları düzeltilirken hata oluştu' : 
+      'Error fixing validation errors';
+    showNotification(errorMessage, false);
+  }
+}
+
+/**
+ * Toggle the panel
+ */
+async function togglePanel() {
+  const isTeslaPage = await checkIfTeslaPage();
+  if (!isTeslaPage) {
+    const message = currentSettings.region === 'TR' ? 
+      'Tesla sayfasında değilsiniz' : 
+      'Not on a Tesla page';
+    showNotification(message, false);
+    return;
+  }
+  
+  try {
+    const response = await sendMessageToBackground({ action: ACTION_TYPES.TOGGLE_PANEL });
+    
+    const successMessage = currentSettings.region === 'TR' ? 
+      'Panel durumu değiştirildi' : 
+      'Panel toggled';
+    showNotification(successMessage, true);
+  } catch (err) {
+    console.error('Error toggling panel:', err);
+    
+    const errorMessage = currentSettings.region === 'TR' ? 
+      'Panel açılırken hata oluştu' : 
+      'Error toggling panel';
+    showNotification(errorMessage, false);
+  }
+}
+
+/**
+ * Fill ZIP code dialog
+ */
 async function fillZipDialog() {
   const isTeslaPage = await checkIfTeslaPage();
   if (!isTeslaPage) {
@@ -655,140 +866,67 @@ async function fillZipDialog() {
   }
 }
 
-// Then add this to the DOMContentLoaded event listener:
-// Add this right after adding the togglePanel event listener
-
-
-
-// Fill the form on the current page
-async function fillForm() {
-  const isTeslaPage = await checkIfTeslaPage();
-  if (!isTeslaPage) {
-    const message = currentSettings.region === 'TR' ? 
-      'Tesla sayfasında değilsiniz' : 
-      'Not on a Tesla page';
-    showNotification(message, false);
-    return;
-  }
+/**
+ * Setup the collapsible sections
+ */
+function setupCollapsibles() {
+  const collapsibleHeaders = document.querySelectorAll('.collapsible-header');
   
-  try {
-    const message = currentSettings.region === 'TR' ? 
-      'Form dolduruluyor...' : 
-      'Filling form...';
-    showNotification(message, true);
-    
-    // Send message to background script
-    const response = await sendMessage({ action: 'fillForm' });
-    
-    if (response && response.status === 'Form filled') {
-      const successMessage = currentSettings.region === 'TR' ? 
-        `${response.count} alan başarıyla dolduruldu` : 
-        `Successfully filled ${response.count} fields`;
-      showNotification(successMessage, true);
-    } else {
-      const errorMessage = currentSettings.region === 'TR' ? 
-        'Form doldurulamadı' : 
-        'Failed to fill form';
-      showNotification(errorMessage, false);
-    }
-  } catch (err) {
-    console.error('Error filling form:', err);
-    
-    const errorMessage = currentSettings.region === 'TR' ? 
-      'Form doldurulurken hata oluştu' : 
-      'Error filling form';
-    showNotification(errorMessage, false);
-  }
-}
-
-// Fix validation errors on the current page
-async function fixValidation() {
-  const isTeslaPage = await checkIfTeslaPage();
-  if (!isTeslaPage) {
-    const message = currentSettings.region === 'TR' ? 
-      'Tesla sayfasında değilsiniz' : 
-      'Not on a Tesla page';
-    showNotification(message, false);
-    return;
-  }
-  
-  try {
-    const message = currentSettings.region === 'TR' ? 
-      'Doğrulama hataları düzeltiliyor...' : 
-      'Fixing validation errors...';
-    showNotification(message, true);
-    
-    // Send message to background script
-    await sendMessage({ action: 'fixValidation' });
-    
-    const successMessage = currentSettings.region === 'TR' ? 
-      'Doğrulama hataları düzeltildi' : 
-      'Validation errors fixed';
-    showNotification(successMessage, true);
-  } catch (err) {
-    console.error('Error fixing validation:', err);
-    
-    const errorMessage = currentSettings.region === 'TR' ? 
-      'Doğrulama hataları düzeltilirken hata oluştu' : 
-      'Error fixing validation';
-    showNotification(errorMessage, false);
-  }
-}
-
-// Toggle the panel
-async function togglePanel() {
-  const isTeslaPage = await checkIfTeslaPage();
-  if (!isTeslaPage) {
-    const message = currentSettings.region === 'TR' ? 
-      'Tesla sayfasında değilsiniz' : 
-      'Not on a Tesla page';
-    showNotification(message, false);
-    return;
-  }
-  
-  try {
-    // Send message to background script
-    await sendMessage({ action: 'togglePanel' });
-  } catch (err) {
-    console.error('Error toggling panel:', err);
-    
-    const errorMessage = currentSettings.region === 'TR' ? 
-      'Panel açılırken hata oluştu' : 
-      'Error toggling panel';
-    showNotification(errorMessage, false);
-  }
-}
-
-// Set up tabs
-function setupTabs() {
-  const tabs = document.querySelectorAll('.tab');
-  const tabContents = document.querySelectorAll('.tab-content');
-  
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      // Get tab ID
-      const tabId = tab.getAttribute('data-tab');
+  collapsibleHeaders.forEach(header => {
+    header.addEventListener('click', () => {
+      // Toggle the header's open state
+      header.classList.toggle('open');
       
-      // Update active tab
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      
-      // Update active content
-      tabContents.forEach(content => {
-        content.classList.remove('active');
-        if (content.id === tabId + '-tab') {
-          content.classList.add('active');
-        }
-      });
+      // Find the content container
+      const content = header.nextElementSibling;
+      if (content && content.classList.contains('collapsible-content')) {
+        content.classList.toggle('open');
+      }
     });
   });
 }
 
-// Initialize
+/**
+ * Setup ZIP code functionality
+ */
+function setupZipCodeFunctionality() {
+  // Get zip input field
+  const zipInput = document.getElementById('zip-input');
+  if (!zipInput) return;
+  
+  // Load zip code from storage
+  chrome.storage.sync.get(['zip'], (data) => {
+    if (data && data.zip) {
+      zipInput.value = data.zip;
+    }
+  });
+  
+  // Add enter key handler for zip input
+  zipInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      saveSettings();
+      
+      // If on a Tesla page, try to apply the ZIP code immediately
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (tabs.length > 0 && tabs[0].url && tabs[0].url.includes('tesla.com')) {
+          const zip = zipInput.value.trim();
+          if (zip) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+              action: 'setZipCode',
+              zipCode: zip
+            });
+          }
+        }
+      });
+    }
+  });
+}
+
+// Initialize the popup
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Setup tabs
-    setupTabs();
+    // Set up collapsible sections
+    setupCollapsibles();
     
     // Load settings
     await loadSettings();
@@ -796,133 +934,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up region buttons
     const regionButtons = document.querySelectorAll('.region-btn');
     regionButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        changeRegion(btn.dataset.region);
-      });
+      btn.addEventListener('click', () => changeRegion(btn.dataset.region));
     });
     
-    // Set up event handlers
-    document.getElementById('monitor-btn').addEventListener('click', toggleMonitoring);
-    document.getElementById('check-now-btn').addEventListener('click', checkInventoryNow);
-    document.getElementById('export-csv-btn').addEventListener('click', exportToCSV);
-    document.getElementById('open-tesla-btn').addEventListener('click', openTeslaInventory);
-    document.getElementById('settings-btn').addEventListener('click', openOptions);
+    // Monitor toggle button
+    document.getElementById('monitor-toggle-btn').addEventListener('click', toggleMonitoring);
     
-    // Form tab buttons
+    // Inventory actions
+    document.getElementById('check-now-btn').addEventListener('click', checkInventoryNow);
+    document.getElementById('open-tesla-btn').addEventListener('click', openTeslaInventory);
+    
+    // Form helper actions
     document.getElementById('fill-form-btn').addEventListener('click', fillForm);
     document.getElementById('fix-validation-btn').addEventListener('click', fixValidation);
     document.getElementById('toggle-panel-btn').addEventListener('click', togglePanel);
-    document.getElementById('fill-zip-btn').addEventListener('click', fillZipDialog);
+    
+    // Settings button
+    document.getElementById('settings-btn').addEventListener('click', openOptions);
+    
+    // Export CSV button (may not be visible initially)
+    const exportCsvBtn = document.getElementById('export-csv-btn');
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', exportToCSV);
+    }
+    
+    // Set up ZIP code functionality
+    setupZipCodeFunctionality();
     
     // Update button states based on whether we're on a Tesla page
-    checkIfTeslaPage().then(isTeslaPage => {
-      const fillFormBtn = document.getElementById('fill-form-btn');
-      const fixValidationBtn = document.getElementById('fix-validation-btn');
-      const togglePanelBtn = document.getElementById('toggle-panel-btn');
-      
-      if (!isTeslaPage) {
-        fillFormBtn.disabled = true;
-        fixValidationBtn.disabled = true;
-        togglePanelBtn.disabled = true;
-        
-        fillFormBtn.title = currentSettings.region === 'TR' ? 
-          'Tesla sayfasında olmalısınız' : 
-          'Must be on a Tesla page';
-        fixValidationBtn.title = currentSettings.region === 'TR' ? 
-          'Tesla sayfasında olmalısınız' : 
-          'Must be on a Tesla page';
-        togglePanelBtn.title = currentSettings.region === 'TR' ? 
-          'Tesla sayfasında olmalısınız' : 
-          'Must be on a Tesla page';
-      }
-    });
-  } catch (err) {
-    console.error('Error initializing popup:', err);
-    showNotification('Error initializing extension', false);
-  }
-
-  // Add this to popup/popup.js
-// Add this at the end of your document.addEventListener('DOMContentLoaded', async () => {...}) function
-
-// Set up the ZIP code setting functionality
-function setupZipCodeSetting() {
-  const zipInput = document.getElementById('zip-code-input');
-  const setZipBtn = document.getElementById('set-zip-btn');
-  
-  if (!zipInput || !setZipBtn) return;
-  
-  // Pre-fill with any existing ZIP code
-  chrome.storage.sync.get(['zip'], (data) => {
-    if (data && data.zip) {
-      zipInput.value = data.zip;
-      zipInput.placeholder = `Current: ${data.zip}`;
-    }
-  });
-  
-  // Set ZIP code button handler
-  setZipBtn.addEventListener('click', () => {
-    const zipCode = zipInput.value.trim();
+    const isTeslaPage = await checkIfTeslaPage();
+    const teslaPageButtons = [
+      'fill-form-btn', 
+      'fix-validation-btn', 
+      'toggle-panel-btn'
+    ];
     
-    if (!zipCode) {
-      const message = currentSettings.region === 'TR' ? 
-        'Lütfen bir ZIP kodu girin' : 
-        'Please enter a ZIP code';
-      showNotification(message, false);
-      return;
-    }
-    
-    // Save to storage
-    chrome.storage.sync.set({ zip: zipCode }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('Error saving ZIP code:', chrome.runtime.lastError);
-        const errorMessage = currentSettings.region === 'TR' ? 
-          'ZIP kodu kaydedilirken hata oluştu' : 
-          'Error saving ZIP code';
-        showNotification(errorMessage, false);
-      } else {
-        const successMessage = currentSettings.region === 'TR' ? 
-          `ZIP kodu kaydedildi: ${zipCode}` : 
-          `ZIP code saved: ${zipCode}`;
-        showNotification(successMessage, true);
-        
-        // Also try to apply the ZIP code to any active tab
-        applyZipCodeToActiveTab(zipCode);
-      }
-    });
-  });
-  
-  // Enter key handler
-  zipInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      setZipBtn.click();
-      }
+    if (!isTeslaPage) {
+      // Disable Tesla page specific buttons if not on a Tesla page
+      teslaPageButtons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+          btn.disabled = true;
+          btn.title = currentSettings.region === 'TR' ? 
+            'Tesla sayfasında olmalısınız' : 
+            'Must be on a Tesla page';
+          btn.style.opacity = '0.6';
+          btn.style.cursor = 'not-allowed';
+        }
       });
     }
-
-  // Apply ZIP code to the active tab
-  function applyZipCodeToActiveTab(zipCode) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs.length > 0) {
-        const tab = tabs[0];
-        
-        // Check if the tab is a Tesla page
-        if (tab.url && tab.url.includes('tesla.com')) {
-          // Send message to content script
-          chrome.tabs.sendMessage(tab.id, { 
-            action: 'setZipCode',
-            zipCode: zipCode
-          }, (response) => {
-            if (chrome.runtime.lastError) {
-              console.error('Error sending message to tab:', chrome.runtime.lastError);
-            } else if (response && response.success) {
-              console.log('ZIP code applied to active tab:', response);
-            }
-          });
-        }
-      }
-    });
+    
+    console.log('Popup initialized successfully');
+  } catch (err) {
+    console.error('Error initializing popup:', err);
+    showNotification('Error initializing popup: ' + err.message, false);
   }
-
-  // Call this setup function at the end of your DOMContentLoaded event
-  setupZipCodeSetting();
 });
