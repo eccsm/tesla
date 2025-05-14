@@ -559,18 +559,11 @@ const FormHandler = {
       
       // Define field mapping
       const fieldMapping = {
-        // Account details
         'first': 'first',
         'last': 'last',
         'email': 'email',
-        'emailConfirm': 'email', // Use same email for confirmation
+        'emailConfirm': 'email',
         'phone': 'phone',
-        
-        // Address
-        'addr1': 'addr1',
-        'addr2': 'addr2',
-        
-        // Payment fields excluded since they'll be handled separately
       };
       
       // Get current region for regional adaptations

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tesla AutoPilot Enhanced",
   "description": "Track Tesla inventory under your price target, auto-fill checkout forms, and auto-fill ZIP code dialogs on inventory pages.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -10,7 +10,8 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "icons": {
     "128": "icons/science.png"
@@ -22,8 +23,7 @@
     "alarms",
     "notifications",
     "declarativeNetRequest",
-    "declarativeNetRequestWithHostAccess",
-    "offscreen"
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "https://www.tesla.com/*"
@@ -38,7 +38,7 @@
         "https://www.tesla.com/tr_TR/inventory/*",
         "https://www.tesla.com/tr_TR/myorder/*"
       ],
-      "js": ["content/inject.js"],
+      "js": ["content/content-helper.js", "content/inject.js"],
       "css": ["style.css"],
       "run_at": "document_idle"
     }
@@ -46,7 +46,11 @@
   "options_page": "options/options.html",
   "web_accessible_resources": [
     {
-      "resources": ["style.css", "content/inject.js"],
+      "resources": [
+        "style.css", 
+        "content/inject.js",
+        "shared/*.js"
+      ],
       "matches": ["https://www.tesla.com/*"]
     }
   ]
