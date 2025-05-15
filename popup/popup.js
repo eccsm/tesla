@@ -793,59 +793,6 @@ async function togglePanel() {
   }
 }
 
-/**
- * Fill ZIP code dialog
- */
-async function fillZipDialog() {
-  const isTeslaPage = await checkIfTeslaPage();
-  if (!isTeslaPage) {
-    const message = currentSettings.region === 'TR' ? 
-      'Tesla sayfasında değilsiniz' : 
-      'Not on a Tesla page';
-    showNotification(message, false);
-    return;
-  }
-  
-  try {
-    const message = currentSettings.region === 'TR' ? 
-      'ZIP kodu doldurulmaya çalışılıyor...' : 
-      'Filling ZIP code...';
-    showNotification(message, true);
-    
-    // Send message to content script
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (tabs.length > 0) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: 'fillZipDialog'}, function(response) {
-          if (chrome.runtime.lastError) {
-            console.error('Error sending message:', chrome.runtime.lastError);
-            const errorMessage = currentSettings.region === 'TR' ?
-              'Mesaj gönderilirken hata oluştu' :
-              'Error sending message';
-            showNotification(errorMessage, false);
-          } else {
-            console.log('Response:', response);
-            const successMessage = currentSettings.region === 'TR' ?
-              'ZIP kodu doldurma talimatı gönderildi' :
-              'ZIP code fill attempted';
-            showNotification(successMessage, true);
-          }
-        });
-      } else {
-        const errorMessage = currentSettings.region === 'TR' ?
-          'Aktif sekme bulunamadı' :
-          'No active tab found';
-        showNotification(errorMessage, false);
-      }
-    });
-  } catch (err) {
-    console.error('Error filling ZIP dialog:', err);
-    
-    const errorMessage = currentSettings.region === 'TR' ? 
-      'ZIP kodu doldurulurken hata oluştu' : 
-      'Error filling ZIP code dialog';
-    showNotification(errorMessage, false);
-  }
-}
 
 /**
  * Setup the collapsible sections
@@ -866,43 +813,261 @@ function setupCollapsibles() {
     });
   });
 }
-
 /**
- * Setup ZIP code functionality
+ * Improved popup.js for in-page filtering instead of opening new tabs
+ * 
+ * This version communicates with the content script to apply filters
+ * directly on the current Tesla page.
  */
-function setupZipCodeFunctionality() {
-  // Get zip input field
-  const zipInput = document.getElementById('zip-input');
-  if (!zipInput) return;
+
+// Update the setupDynamicThresholdChecking function in popup.js
+function setupDynamicThresholdChecking() {
+  const priceInput = document.getElementById('price-input');
   
-  // Load zip code from storage
-  chrome.storage.sync.get(['zip'], (data) => {
-    if (data && data.zip) {
-      zipInput.value = data.zip;
-    }
-  });
-  
-  // Add enter key handler for zip input
-  zipInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      saveSettings();
-      
-      // If on a Tesla page, try to apply the ZIP code immediately
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (tabs.length > 0 && tabs[0].url && tabs[0].url.includes('tesla.com')) {
-          const zip = zipInput.value.trim();
-          if (zip) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'setZipCode',
-              zipCode: zip
-            });
+  if (priceInput) {
+    // Create debounced check function to avoid too many API calls
+    const debouncedCheck = debounce(async (value) => {
+      try {
+        // Don't check if value is empty or not a number
+        if (!value || isNaN(parseInt(value))) return;
+        
+        // Show subtle indicator that check is running
+        const checkNowBtn = document.getElementById('check-now-btn');
+        if (checkNowBtn) {
+          const originalText = checkNowBtn.innerHTML;
+          checkNowBtn.innerHTML = `<span>Checking...</span>`;
+          checkNowBtn.classList.add('checking');
+          
+          // Save the updated value to storage first
+          await saveSettings();
+          
+          // Build filters
+          const filters = {
+            region: currentSettings.region,
+            model: document.getElementById('model').value,
+            condition: document.getElementById('condition').value,
+            priceMax: parseInt(value),
+            zip: document.getElementById('zip-input').value,
+            // Include additional filter values
+            paymentType: document.getElementById('payment-type') ? 
+              document.getElementById('payment-type').value : 'cash'
+          };
+          
+          // First, check if we're on a Tesla inventory page
+          const isTeslaPage = await checkIfTeslaInventoryPage();
+          
+          if (isTeslaPage) {
+            // If we're on a Tesla page, apply filters directly
+            await applyFiltersToActiveTeslaTab(filters);
+          }
+          
+          // Then do the API check regardless
+          const response = await sendMessageToBackground({
+            action: ACTION_TYPES.CHECK_INVENTORY,
+            filters: filters,
+            silent: true // Add this flag to indicate it's a silent check
+          });
+          
+          // Restore button text and style
+          checkNowBtn.innerHTML = originalText;
+          checkNowBtn.classList.remove('checking');
+          
+          // Update UI based on results
+          if (response && response.success) {
+            const resultCount = response.results.length;
+            updateLastUpdated();
+            
+            if (resultCount > 0) {
+              displayResults(response.results);
+              
+              // Show a small indicator
+              const badge = document.createElement('span');
+              badge.className = 'threshold-update-badge';
+              badge.textContent = `${resultCount}`;
+              
+              // Append to check button
+              if (checkNowBtn && !checkNowBtn.querySelector('.threshold-update-badge')) {
+                checkNowBtn.appendChild(badge);
+                
+                // Remove after a few seconds
+                setTimeout(() => {
+                  if (badge.parentNode === checkNowBtn) {
+                    checkNowBtn.removeChild(badge);
+                  }
+                }, 3000);
+              }
+            } else {
+              hideResults();
+            }
           }
         }
-      });
-    }
-  });
+      } catch (err) {
+        console.error('Error in dynamic threshold check:', err);
+        
+        // Make sure to restore button state on error
+        const checkNowBtn = document.getElementById('check-now-btn');
+        if (checkNowBtn) {
+          checkNowBtn.innerHTML = 'Check Now';
+          checkNowBtn.classList.remove('checking');
+        }
+      }
+    }, 1000); // Wait 1 second after typing stops
+    
+    // Add input event listener
+    priceInput.addEventListener('input', (e) => {
+      debouncedCheck(e.target.value);
+    });
+    
+    // Also trigger on blur for immediate check when field loses focus
+    priceInput.addEventListener('blur', (e) => {
+      // Cancel any pending debounced calls
+      if (typeof debouncedCheck.cancel === 'function') {
+        debouncedCheck.cancel();
+      }
+      
+      // Run check immediately on blur
+      if (e.target.value && !isNaN(parseInt(e.target.value))) {
+        debouncedCheck(e.target.value);
+      }
+    });
+  }
 }
 
+/**
+ * Check if the active tab is a Tesla inventory page
+ * @returns {Promise<boolean>} Whether we're on a Tesla inventory page
+ */
+async function checkIfTeslaInventoryPage() {
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        resolve(tabs);
+      });
+    });
+    
+    if (!tabs || tabs.length === 0) return false;
+    
+    const tab = tabs[0];
+    // Specifically check if it's an inventory page, not just tesla.com
+    return tab.url && tab.url.includes('tesla.com') && tab.url.includes('/inventory/');
+  } catch (error) {
+    console.error('Error checking if Tesla inventory page:', error);
+    return false;
+  }
+}
+
+/**
+ * Apply filters directly to the active Tesla tab
+ * @param {Object} filters - Filters to apply
+ * @returns {Promise<boolean>} Success status
+ */
+async function applyFiltersToActiveTeslaTab(filters) {
+  try {
+    const tabs = await new Promise((resolve) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        resolve(tabs);
+      });
+    });
+    
+    if (!tabs || tabs.length === 0) return false;
+    
+    const tab = tabs[0];
+    
+    // Send a message to the content script to update filters
+    const response = await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'updateFilters',
+        filters: filters
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('Error communicating with tab:', chrome.runtime.lastError);
+          resolve({ success: false });
+        } else {
+          resolve(response || { success: false });
+        }
+      });
+    });
+    
+    return response.success;
+  } catch (error) {
+    console.error('Error applying filters to Tesla tab:', error);
+    return false;
+  }
+}
+
+/**
+ * Update the modified "Open Inventory" button click handler in popup.js
+ * to work with both direct filtering and new tab fallback
+ */
+// Find the existing 'open-tesla-btn' click handler and replace it with this:
+document.getElementById('open-tesla-btn').addEventListener('click', async () => {
+  try {
+    // First save settings
+    await saveSettings();
+    
+    // Check if we're already on a Tesla inventory page
+    const isTeslaPage = await checkIfTeslaInventoryPage();
+    
+    // Get the current filter values
+    const filters = {
+      region: currentSettings.region,
+      model: document.getElementById('model').value,
+      condition: document.getElementById('condition').value,
+      priceMax: parseInt(document.getElementById('price-input').value) || 
+                (currentSettings.region === 'TR' ? 1590000 : 45000),
+      zip: document.getElementById('zip-input').value,
+      paymentType: document.getElementById('payment-type') ? 
+        document.getElementById('payment-type').value : 'cash'
+    };
+    
+    if (isTeslaPage) {
+      // If already on a Tesla page, try to apply filters directly
+      const success = await applyFiltersToActiveTeslaTab(filters);
+      
+      if (success) {
+        showNotification(currentSettings.region === 'TR' ? 
+          'Filtreler uygulandı' : 
+          'Filters applied', true);
+        return;
+      }
+    }
+    
+    // If we're not on a Tesla page or direct filtering failed, 
+    // fall back to opening a new tab with the filters in the URL
+    const baseUrl = currentSettings.region === 'TR' ? 
+      'https://www.tesla.com/tr_TR' : 
+      'https://www.tesla.com';
+      
+    // Build the URL with all parameters
+    const url = new URL(`${baseUrl}/inventory/${filters.condition}/${filters.model}`);
+    const searchParams = url.searchParams;
+    
+    // Add common parameters
+    searchParams.set('arrangeby', 'Price');
+    
+    if (filters.priceMax && filters.priceMax > 0) {
+      searchParams.set('price', filters.priceMax);
+    }
+    
+    if (filters.zip) {
+      searchParams.set('zip', filters.zip);
+    }
+    
+    if (filters.paymentType) {
+      searchParams.set('PaymentType', filters.paymentType);
+    }
+    
+    // Always set range to 25 miles for better results
+    searchParams.set('range', '25');
+    
+    // Open the URL
+    chrome.tabs.create({ url: url.toString() });
+    
+  } catch (error) {
+    console.error('Error opening Tesla inventory:', error);
+    showNotification('Error opening Tesla inventory', false);
+  }
+});
 // Initialize the popup
 document.addEventListener('DOMContentLoaded', async () => {
   try {

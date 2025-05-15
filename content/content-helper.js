@@ -761,6 +761,254 @@ const formHelper = {
   }
 };
 
+/**
+ * Tesla AutoPilot - Fixed Content Helper
+ * 
+ * This version fixes the "possibleContainers is not defined" error and
+ * improves the in-page filtering without opening new tabs.
+ */
+
+// First, fix the ReferenceError by adding the missing definition:
+// Add this near line 780 in content-helper.js (before where the error occurs)
+
+// Find possible price range input elements
+function findPriceRangeInput() {
+  // Look for range inputs that might control price
+  const possibleContainers = Array.from(document.querySelectorAll('input[type="range"], .payment-slider-container input'));
+  
+  console.log("Found possible price range inputs:", possibleContainers.length);
+  
+  // Return the first matched element or null
+  return possibleContainers.length > 0 ? possibleContainers[0] : null;
+}
+
+/**
+ * Apply filter changes directly to the Tesla page instead of opening a new tab
+ * @param {Object} filters - The filter values to apply
+ * @returns {boolean} - Whether filters were successfully applied
+ */
+function applyFiltersToPage(filters) {
+  try {
+    console.log("Applying filters to current page:", filters);
+    
+    // 1. Update model selection if it exists
+    if (filters.model) {
+      const modelRadio = document.querySelector(`input[type="radio"][value="${filters.model}"]`);
+      if (modelRadio && !modelRadio.checked) {
+        modelRadio.click();
+        console.log(`Clicked model radio for ${filters.model}`);
+      }
+    }
+    
+    // 2. Update payment type if it exists
+    if (filters.paymentType) {
+      const paymentRadio = document.querySelector(`input[type="radio"][value="${filters.paymentType}"]`);
+      if (paymentRadio && !paymentRadio.checked) {
+        paymentRadio.click();
+        console.log(`Clicked payment type radio for ${filters.paymentType}`);
+      }
+    }
+    
+    // 3. Update price slider if it exists
+    if (filters.priceMax) {
+      const priceSlider = findPriceRangeInput();
+      if (priceSlider) {
+        // First check if the slider needs updating
+        const currentValue = parseInt(priceSlider.value, 10);
+        const targetValue = parseInt(filters.priceMax, 10);
+        
+        if (currentValue !== targetValue) {
+          // Update the value
+          priceSlider.value = targetValue;
+          
+          // Dispatch events to ensure Tesla's code recognizes the change
+          priceSlider.dispatchEvent(new Event('input', { bubbles: true }));
+          priceSlider.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          console.log(`Updated price slider to ${targetValue}`);
+          
+          // Update any displayed price labels
+          const priceLabels = document.querySelectorAll('.tds-form-label-text');
+          priceLabels.forEach(label => {
+            if (label.textContent.includes('$')) {
+              const currencySymbol = '$';
+              label.textContent = `Up to ${currencySymbol}${targetValue.toLocaleString()}`;
+            }
+          });
+        }
+      }
+    }
+    
+    // 4. Update trim checkboxes if applicable
+    if (filters.trimLevels && Array.isArray(filters.trimLevels)) {
+      const trimCheckboxes = document.querySelectorAll('input[type="checkbox"][id^="TRIM:"]');
+      if (trimCheckboxes.length > 0) {
+        // First uncheck all trim checkboxes
+        trimCheckboxes.forEach(checkbox => {
+          if (checkbox.checked) {
+            checkbox.click();
+          }
+        });
+        
+        // Then check the ones that match the filters
+        filters.trimLevels.forEach(trim => {
+          const trimCheckbox = document.querySelector(`input[type="checkbox"][id="TRIM:${trim}"]`);
+          if (trimCheckbox && !trimCheckbox.checked) {
+            trimCheckbox.click();
+            console.log(`Clicked trim checkbox for ${trim}`);
+          }
+        });
+      }
+    }
+    
+    // 5. Find and click "Apply Filters" button if it exists
+    const applyButton = document.querySelector('button[data-id="apply-filters-button"]');
+    if (applyButton) {
+      applyButton.click();
+      console.log("Clicked Apply Filters button");
+    }
+    
+    // Success - filters applied
+    return true;
+  } catch (error) {
+    console.error("Error applying filters to page:", error);
+    return false;
+  }
+}
+
+/**
+ * Create a floating panel to show when filters have been updated
+ * @param {string} message - The message to display
+ */
+function showFilterUpdateNotification(message) {
+  try {
+    // Create or update notification element
+    let notification = document.getElementById('tesla-filter-notification');
+    
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.id = 'tesla-filter-notification';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(30, 30, 30, 0.8);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 5px;
+        font-family: system-ui, sans-serif;
+        z-index: 9999;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 0.3s, transform 0.3s;
+      `;
+      document.body.appendChild(notification);
+      
+      // Force reflow
+      notification.offsetHeight;
+    }
+    
+    // Update content
+    notification.textContent = message;
+    
+    // Show notification
+    notification.style.opacity = '1';
+    notification.style.transform = 'translateY(0)';
+    
+    // Hide after 3 seconds
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      notification.style.transform = 'translateY(10px)';
+      
+      // Remove after animation completes
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 300);
+    }, 3000);
+  } catch (error) {
+    console.error("Error showing filter notification:", error);
+  }
+}
+
+// Add message listener for filter updates from the popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Handle filter updates when threshold changes
+  if (request.action === "updateFilters" && request.filters) {
+    const success = applyFiltersToPage(request.filters);
+    
+    if (success) {
+      const priceMax = request.filters.priceMax;
+      const formattedPrice = priceMax ? 
+        `$${parseInt(priceMax).toLocaleString()}` : '';
+        
+      showFilterUpdateNotification(`Price threshold updated to ${formattedPrice}`);
+    }
+    
+    sendResponse({ success });
+    return true;
+  }
+  
+  return false;
+});
+
+// Fixed: Remove the reference to possibleContainers that's causing the error
+// Keep all of the existing code, but remove just the erroneous reference
+// around line 785:
+
+// Replace this problematic section:
+// possibleContainers.forEach(container => {
+//   try {
+//     const originalBoxShadow = container.style.boxShadow;
+//     // ... rest of the code
+//   } catch (e) {
+//     // Ignore styling errors
+//   }
+// });
+
+// With this fixed version:
+try {
+  const containers = findPriceRangeInput();
+  if (containers) {
+    const originalBoxShadow = containers.style.boxShadow;
+    const originalPosition = containers.style.position;
+    const originalZIndex = containers.style.zIndex;
+    
+    // Add a pulse effect
+    containers.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
+    containers.style.position = originalPosition === 'static' ? 'relative' : originalPosition;
+    containers.style.zIndex = '9000';
+    
+    // Add transition for smooth effect
+    containers.style.transition = 'box-shadow 0.5s ease';
+    
+    // Pulse effect
+    let pulseCount = 0;
+    const pulseInterval = setInterval(() => {
+      if (pulseCount % 2 === 0) {
+        containers.style.boxShadow = '0 0 0 5px rgba(59, 130, 246, 0.3)';
+      } else {
+        containers.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
+      }
+      
+      pulseCount++;
+      if (pulseCount >= 6) {
+        clearInterval(pulseInterval);
+        
+        // Reset styles after a while
+        setTimeout(() => {
+          containers.style.boxShadow = originalBoxShadow;
+          containers.style.zIndex = originalZIndex;
+        }, 5000);
+      }
+    }, 500);
+  }
+} catch (e) {
+  // Ignore styling errors
+  console.error("Error styling containers:", e);
+}
   
   // Also look for payment form sections based on text content
   const possiblePaymentSections = [];
@@ -821,3 +1069,245 @@ const formHelper = {
     }
   });
   
+  /**
+ * Tesla AutoPilot Content Helper - Dynamic Inventory Updates
+ *
+ * Add this code to the content-helper.js file to handle inventory updates
+ * when the threshold price changes.
+ */
+
+// Add this function to your content-helper.js file
+
+/**
+ * Update UI with inventory check results
+ * @param {Array} vehicles - Found vehicles
+ * @param {Object} filters - Search filters used
+ */
+function updateInventoryResults(vehicles, filters) {
+  try {
+    // Find or create a results container
+    let resultsContainer = document.getElementById('tesla-inventory-results');
+    
+    if (!resultsContainer) {
+      // Create the container if it doesn't exist
+      resultsContainer = document.createElement('div');
+      resultsContainer.id = 'tesla-inventory-results';
+      resultsContainer.className = 'inventory-results';
+      
+      // Add styles
+      resultsContainer.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(30, 30, 30, 0.8);
+        color: #fff;
+        backdrop-filter: blur(5px);
+        padding: 15px;
+        border-radius: 8px;
+        width: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        z-index: 9998;
+        font-family: system-ui, sans-serif;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s, opacity 0.3s;
+      `;
+      
+      // Add to the page
+      document.body.appendChild(resultsContainer);
+    }
+    
+    // Clear existing content
+    resultsContainer.innerHTML = '';
+    
+    // Create header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    `;
+    
+    const title = document.createElement('h3');
+    title.style.cssText = 'margin: 0; font-size: 16px; font-weight: 500;';
+    title.textContent = vehicles.length > 0 
+      ? `Found ${vehicles.length} ${vehicles.length === 1 ? 'vehicle' : 'vehicles'}`
+      : 'No matching vehicles';
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = `
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0;
+      margin: 0;
+    `;
+    closeBtn.addEventListener('click', () => {
+      resultsContainer.style.transform = 'translateY(20px)';
+      resultsContainer.style.opacity = '0';
+      setTimeout(() => resultsContainer.remove(), 300);
+    });
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    resultsContainer.appendChild(header);
+    
+    // If we have vehicles, show them
+    if (vehicles.length > 0) {
+      // Price filter info
+      if (filters && filters.priceMax) {
+        const priceInfo = document.createElement('div');
+        priceInfo.style.cssText = 'margin-bottom: 10px; font-size: 14px;';
+        
+        // Format price based on region
+        const currencySymbol = filters.region === 'TR' ? '₺' : '$';
+        const formattedPrice = `${currencySymbol}${parseInt(filters.priceMax).toLocaleString()}`;
+        
+        priceInfo.textContent = `Filtered by price: Under ${formattedPrice}`;
+        resultsContainer.appendChild(priceInfo);
+      }
+      
+      // Create scrollable container for vehicles
+      const vehicleList = document.createElement('div');
+      vehicleList.style.cssText = 'max-height: 300px; overflow-y: auto;';
+      
+      // Show up to 10 vehicles
+      const displayLimit = Math.min(10, vehicles.length);
+      
+      for (let i = 0; i < displayLimit; i++) {
+        const vehicle = vehicles[i];
+        
+        const vehicleItem = document.createElement('div');
+        vehicleItem.style.cssText = `
+          padding: 8px;
+          margin-bottom: 8px;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.1);
+        `;
+        
+        // Vehicle model and trim
+        const modelInfo = document.createElement('div');
+        modelInfo.style.fontWeight = 'bold';
+        modelInfo.textContent = `${vehicle.model} ${vehicle.trim || ''}`;
+        
+        // Vehicle price
+        const priceInfo = document.createElement('div');
+        priceInfo.textContent = vehicle.formattedPrice || `$${vehicle.price.toLocaleString()}`;
+        
+        // View button
+        const viewLink = document.createElement('a');
+        viewLink.href = vehicle.inventoryUrl;
+        viewLink.textContent = 'View vehicle';
+        viewLink.style.cssText = `
+          display: inline-block;
+          margin-top: 5px;
+          color: #3b82f6;
+          text-decoration: none;
+          font-size: 13px;
+        `;
+        viewLink.target = '_blank';
+        
+        // Add to item
+        vehicleItem.appendChild(modelInfo);
+        vehicleItem.appendChild(priceInfo);
+        vehicleItem.appendChild(viewLink);
+        
+        // Add to list
+        vehicleList.appendChild(vehicleItem);
+      }
+      
+      // If there are more vehicles than display limit, show count
+      if (vehicles.length > displayLimit) {
+        const moreInfo = document.createElement('div');
+        moreInfo.style.cssText = 'text-align: center; margin-top: 10px; font-size: 13px;';
+        moreInfo.textContent = `+ ${vehicles.length - displayLimit} more vehicles`;
+        vehicleList.appendChild(moreInfo);
+      }
+      
+      resultsContainer.appendChild(vehicleList);
+      
+      // Add action buttons
+      const actionsDiv = document.createElement('div');
+      actionsDiv.style.cssText = 'margin-top: 15px; display: flex; gap: 10px;';
+      
+      // Open all button
+      const openAllBtn = document.createElement('button');
+      openAllBtn.textContent = 'Open All';
+      openAllBtn.style.cssText = `
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        flex: 1;
+      `;
+      openAllBtn.addEventListener('click', () => {
+        // Open first 5 vehicles max to avoid popup blocking
+        const openLimit = Math.min(5, vehicles.length);
+        for (let i = 0; i < openLimit; i++) {
+          window.open(vehicles[i].inventoryUrl, '_blank');
+        }
+      });
+      
+      // Refresh button
+      const refreshBtn = document.createElement('button');
+      refreshBtn.textContent = 'Refresh';
+      refreshBtn.style.cssText = `
+        background: #64748b;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        flex: 1;
+      `;
+      refreshBtn.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ 
+          action: "checkInventory",
+          filters: filters
+        });
+      });
+      
+      actionsDiv.appendChild(openAllBtn);
+      actionsDiv.appendChild(refreshBtn);
+      resultsContainer.appendChild(actionsDiv);
+      
+      // Animate in
+      resultsContainer.style.transform = 'translateY(20px)';
+      resultsContainer.style.opacity = '0';
+      
+      // Force reflow
+      resultsContainer.offsetHeight;
+      
+      // Animate to final position
+      resultsContainer.style.transform = 'translateY(0)';
+      resultsContainer.style.opacity = '1';
+    } else {
+      // No vehicles found
+      const noResults = document.createElement('div');
+      noResults.style.cssText = 'text-align: center; margin: 20px 0;';
+      noResults.textContent = 'No vehicles matching your criteria found.';
+      
+      resultsContainer.appendChild(noResults);
+    }
+  } catch (error) {
+    console.error('Error updating inventory results:', error);
+  }
+}
+
+// Add a listener for inventory results
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "updateInventoryResults" && request.vehicles) {
+    updateInventoryResults(request.vehicles, request.filters);
+    sendResponse({ success: true });
+    return true;
+  }
+  return false;
+});

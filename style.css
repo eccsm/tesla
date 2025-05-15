@@ -1,176 +1,143 @@
-/* Tesla AutoPilot Panel CSS */
+/* CSS for dynamic threshold checking UI elements */
 
-/* Panel container */
-#tesla-autopilot-panel {
-  position: fixed;
-  top: 64px;
-  right: 0;
-  width: 340px;
-  max-height: 80vh;
-  overflow: auto;
-  background: rgba(30, 30, 30, 0.8);
-  backdrop-filter: blur(8px);
-  padding: 16px;
-  border-radius: 8px 0 0 8px;
-  color: #fff;
-  z-index: 9999;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+/* Badge that shows when inventory is updated */
+.threshold-update-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #10b981;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
 }
 
-/* Header and close button */
-#tesla-autopilot-panel .header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* Ensure buttons have relative positioning for badge placement */
+.btn {
   position: relative;
 }
 
-#tesla-autopilot-panel h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 500;
+/* When checking inventory, add subtle animation */
+.btn.checking {
+  position: relative;
+  overflow: hidden;
 }
 
-#tesla-autopilot-panel h3 {
-  font-size: 16px;
-  margin: 16px 0 8px 0;
-  font-weight: 500;
-}
-
-#tesla-autopilot-panel .btn-ghost {
-  background: none;
-  color: #fff;
-  border: none;
-  font-size: 20px;
+.btn.checking:after {
+  content: '';
   position: absolute;
   top: 0;
-  right: 0;
-  cursor: pointer;
-}
-
-/* Form groups and inputs */
-#tesla-autopilot-panel .form-group {
-  margin-bottom: 12px;
-}
-
-#tesla-autopilot-panel .form-group label {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
-#tesla-autopilot-panel .form-group input,
-#tesla-autopilot-panel .form-group select {
+  left: -100%;
   width: 100%;
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: #fff;
-  box-sizing: border-box;
+  height: 100%;
+  background: linear-gradient(
+    90deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.2), 
+    transparent
+  );
+  animation: loading 1.5s infinite;
 }
 
-/* Buttons */
-#tesla-autopilot-panel .btn {
-  background: #3b82f6;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 6px;
-  color: #fff;
-  margin: 4px 0;
-  cursor: pointer;
-  width: 100%;
-  font-size: 14px;
-  transition: background-color 0.2s;
+@keyframes loading {
+  0% { left: -100%; }
+  100% { left: 100%; }
 }
 
-#tesla-autopilot-panel .btn:hover {
-  background: #2563eb;
-}
-
-/* User info */
-#tesla-autopilot-panel .user-info {
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-#tesla-autopilot-panel .user-info p {
-  margin: 5px 0;
-  font-size: 14px;
-}
-
-/* Status message */
-#tesla-autopilot-panel .status {
-  padding: 8px;
-  border-radius: 4px;
-  margin-top: 8px;
-  text-align: center;
-  font-size: 14px;
-  display: none;
-}
-
-#tesla-autopilot-panel .status.success {
-  background-color: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-}
-
-#tesla-autopilot-panel .status.error {
-  background-color: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-/* Notification */
-.tesla-autopilot-notification {
+/* Styles for inventory results popup on webpage */
+.inventory-results {
   position: fixed;
-  top: 20px;
+  bottom: 20px;
   right: 20px;
-  background: rgba(16, 185, 129, 0.9);
-  color: white;
-  padding: 15px 20px;
-  border-radius: 5px;
-  z-index: 99999;
+  background: rgba(30, 30, 30, 0.8);
+  color: #fff;
+  backdrop-filter: blur(5px);
+  padding: 15px;
+  border-radius: 8px;
+  width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 9998;
   font-family: system-ui, sans-serif;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  animation: fadeIn 0.3s ease-in-out;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s, opacity 0.3s;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+.inventory-results h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 500;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Light mode */
+.inventory-results .vehicle-item {
+  padding: 8px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.inventory-results .vehicle-model {
+  font-weight: bold;
+}
+
+.inventory-results .vehicle-link {
+  display: inline-block;
+  margin-top: 5px;
+  color: #3b82f6;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.inventory-results .actions {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.inventory-results button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.inventory-results button.secondary {
+  background: #64748b;
+}
+
+/* Light mode styles */
 @media (prefers-color-scheme: light) {
-  #tesla-autopilot-panel {
+  .inventory-results {
     background: rgba(255, 255, 255, 0.9);
     color: #000;
   }
   
-  #tesla-autopilot-panel .btn-ghost {
-    color: #000;
-  }
-  
-  #tesla-autopilot-panel .form-group input,
-  #tesla-autopilot-panel .form-group select {
-    background-color: #f5f5f5;
-    border: 1px solid #ddd;
-    color: #000;
-  }
-  
-  #tesla-autopilot-panel .user-info {
+  .inventory-results h3 {
     border-bottom-color: rgba(0, 0, 0, 0.1);
   }
-}
-
-/* General popup styling */
-.tesla-popup {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-}
-
-/* Form elements */
-input, select, button {
-  font-family: inherit;
+  
+  .inventory-results .vehicle-item {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  
+  .inventory-results .vehicle-link {
+    color: #2563eb;
+  }
 }
