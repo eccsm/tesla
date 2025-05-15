@@ -599,43 +599,24 @@ async function openTeslaInventory() {
     // Save settings first
     await saveSettings();
     
-    // Get current values
-    const model = document.getElementById('model').value;
-    const condition = document.getElementById('condition').value;
+    const zip = document.getElementById('zip-input').value;
+    if (zip) {
+      params.append("zip", zip);
+    }
+
     
     // Determine base URL
     let baseUrl = 'https://www.tesla.com';
     if (currentSettings.region === 'TR') {
       baseUrl = 'https://www.tesla.com/tr_TR';
     }
-    
+
     // Build URL
-    const url = `${baseUrl}/inventory/${condition}/${model}`;
-    
-    // Add query parameters
-    const params = new URLSearchParams();
-    
-    // Add price if provided
-    const priceMax = parseInt(document.getElementById('price-input').value);
-    if (priceMax) {
-      params.append("price", priceMax);
-    }
-    
-    // Add ZIP if provided
-    const zip = document.getElementById('zip-input').value;
-    if (zip) {
-      params.append("zip", zip);
-    }
-    
-    // Always sort by price
-    params.append("arrangeby", "Price");
-    
-    // Build the full URL
-    const queryString = params.toString();
-    const fullUrl = queryString ? `${url}?${queryString}` : url;
+    const url = `${baseUrl}/inventory/new/my?arrangeby=savings&zip=${zip}&range=25`;
+
     
     // Open URL in new tab
-    chrome.tabs.create({ url: fullUrl });
+    chrome.tabs.create({ url: url });
   } catch (err) {
     console.error('Error opening Tesla inventory:', err);
     

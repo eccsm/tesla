@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tesla AutoPilot Enhanced",
   "description": "Track Tesla inventory under your price target, auto-fill checkout forms, and auto-fill ZIP code dialogs on inventory pages.",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -26,7 +26,8 @@
     "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
-    "https://www.tesla.com/*"
+    "https://www.tesla.com/*",
+    "https://static-assets-pay.tesla.com/*"
   ],
   "content_scripts": [
     {
@@ -40,6 +41,15 @@
       ],
       "js": ["content/content-helper.js", "content/inject.js"],
       "css": ["style.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://static-assets-pay.tesla.com/*"
+      ],
+      "js": ["content/payment-frames.js"],
+      "all_frames": true,
       "run_at": "document_idle"
     }
   ],
@@ -49,9 +59,13 @@
       "resources": [
         "style.css", 
         "content/inject.js",
+        "content/payment-frames.js",
         "shared/*.js"
       ],
-      "matches": ["https://www.tesla.com/*"]
+      "matches": [
+        "https://www.tesla.com/*", 
+        "https://static-assets-pay.tesla.com/*"
+      ]
     }
   ]
 }
