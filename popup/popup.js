@@ -6,7 +6,7 @@
  */
 
 import { CONFIG, ACTION_TYPES, STORAGE_KEYS } from '../shared/constants.js';
-import { formatPrice, sendMessageToBackground, getLocalizedMessage } from '../shared/utils.js';
+import { formatPrice, sendMessageToBackground, debounce } from '../shared/utils.js';
 
 // State
 let isMonitoring = false;
@@ -592,38 +592,38 @@ async function exportToCSV() {
 }
 
 /**
- * Open Tesla inventory in browser
+ * Open Tesla inventory in browser with simplified URL parameters
  */
 async function openTeslaInventory() {
   try {
     // Save settings first
     await saveSettings();
     
-    const zip = document.getElementById('zip-input').value;
-    if (zip) {
-      params.append("zip", zip);
-    }
-
+    // Get the current filter values (use minimal settings)
+    const model = document.getElementById('model').value || 'my';
+    const condition = document.getElementById('condition').value || 'new';
+    const paymentType = document.getElementById('payment-type')?.value || 'cash';
     
-    // Determine base URL
-    let baseUrl = 'https://www.tesla.com';
-    if (currentSettings.region === 'TR') {
-      baseUrl = 'https://www.tesla.com/tr_TR';
-    }
-
-    // Build URL
-    const url = `${baseUrl}/inventory/new/my?arrangeby=savings&zip=${zip}&range=25`;
-
+    // Build a streamlined Tesla inventory URL
+    const baseUrl = currentSettings.region === 'TR' ? 
+      'https://www.tesla.com/tr_TR' : 
+      'https://www.tesla.com';
     
-    // Open URL in new tab
-    chrome.tabs.create({ url: url });
-  } catch (err) {
-    console.error('Error opening Tesla inventory:', err);
+    // Create URL with only essential parameters
+    const url = `${baseUrl}/inventory/${condition}/${model}?range=25&PaymentType=${paymentType}`;
     
-    const errorMessage = currentSettings.region === 'TR' ? 
-      'Tesla envanteri açılırken hata oluştu' : 
-      'Error opening Tesla inventory';
-    showNotification(errorMessage, false);
+    console.log(`Opening Tesla inventory with URL: ${url}`);
+    
+    // Open only one tab with the simplified URL
+    chrome.tabs.create({ url });
+    
+    // Show a success message
+    showNotification(currentSettings.region === 'TR' ? 
+      'Tesla envanteri açılıyor' : 
+      'Opening Tesla inventory', true);
+  } catch (error) {
+    console.error('Error opening Tesla inventory:', error);
+    showNotification('Error opening Tesla inventory', false);
   }
 }
 
@@ -814,122 +814,99 @@ function setupCollapsibles() {
   });
 }
 /**
- * Improved popup.js for in-page filtering instead of opening new tabs
- * 
- * This version communicates with the content script to apply filters
- * directly on the current Tesla page.
+ * Setup dynamic threshold checking
  */
-
-// Update the setupDynamicThresholdChecking function in popup.js
 function setupDynamicThresholdChecking() {
   const priceInput = document.getElementById('price-input');
   
   if (priceInput) {
-    // Create debounced check function to avoid too many API calls
+    console.log('Setting up dynamic threshold checking');
+    
+    // Create debounced check function
     const debouncedCheck = debounce(async (value) => {
       try {
-        // Don't check if value is empty or not a number
         if (!value || isNaN(parseInt(value))) return;
         
-        // Show subtle indicator that check is running
+        // Update button state to show checking
         const checkNowBtn = document.getElementById('check-now-btn');
         if (checkNowBtn) {
           const originalText = checkNowBtn.innerHTML;
           checkNowBtn.innerHTML = `<span>Checking...</span>`;
           checkNowBtn.classList.add('checking');
           
-          // Save the updated value to storage first
+          // Save settings first
           await saveSettings();
           
-          // Build filters
+          // Get the current filters
           const filters = {
             region: currentSettings.region,
             model: document.getElementById('model').value,
             condition: document.getElementById('condition').value,
             priceMax: parseInt(value),
             zip: document.getElementById('zip-input').value,
-            // Include additional filter values
-            paymentType: document.getElementById('payment-type') ? 
-              document.getElementById('payment-type').value : 'cash'
+            paymentType: document.getElementById('payment-type')?.value || 'cash'
           };
           
-          // First, check if we're on a Tesla inventory page
+          // First check if we're on a Tesla inventory page
           const isTeslaPage = await checkIfTeslaInventoryPage();
           
           if (isTeslaPage) {
-            // If we're on a Tesla page, apply filters directly
-            await applyFiltersToActiveTeslaTab(filters);
+            try {
+              // Try to apply filters directly in the page
+              await applyFiltersToActiveTeslaTab(filters);
+            } catch (err) {
+              console.error('Error applying filters:', err);
+              // Don't show notification since this is triggered by typing
+            }
           }
           
-          // Then do the API check regardless
+          // Check inventory regardless (for popup display)
           const response = await sendMessageToBackground({
             action: ACTION_TYPES.CHECK_INVENTORY,
             filters: filters,
-            silent: true // Add this flag to indicate it's a silent check
+            silent: true
           });
           
-          // Restore button text and style
+          // Restore button state
           checkNowBtn.innerHTML = originalText;
           checkNowBtn.classList.remove('checking');
           
-          // Update UI based on results
-          if (response && response.success) {
-            const resultCount = response.results.length;
+          // Update results if available
+          if (response && response.success && response.results) {
             updateLastUpdated();
-            
-            if (resultCount > 0) {
-              displayResults(response.results);
-              
-              // Show a small indicator
-              const badge = document.createElement('span');
-              badge.className = 'threshold-update-badge';
-              badge.textContent = `${resultCount}`;
-              
-              // Append to check button
-              if (checkNowBtn && !checkNowBtn.querySelector('.threshold-update-badge')) {
-                checkNowBtn.appendChild(badge);
-                
-                // Remove after a few seconds
-                setTimeout(() => {
-                  if (badge.parentNode === checkNowBtn) {
-                    checkNowBtn.removeChild(badge);
-                  }
-                }, 3000);
-              }
-            } else {
-              hideResults();
-            }
+            displayResults(response.results);
           }
         }
       } catch (err) {
         console.error('Error in dynamic threshold check:', err);
         
-        // Make sure to restore button state on error
+        // Restore button state
         const checkNowBtn = document.getElementById('check-now-btn');
         if (checkNowBtn) {
           checkNowBtn.innerHTML = 'Check Now';
           checkNowBtn.classList.remove('checking');
         }
       }
-    }, 1000); // Wait 1 second after typing stops
+    }, 1000);
     
-    // Add input event listener
+    // Add event listeners for input and blur events
     priceInput.addEventListener('input', (e) => {
       debouncedCheck(e.target.value);
     });
     
-    // Also trigger on blur for immediate check when field loses focus
     priceInput.addEventListener('blur', (e) => {
-      // Cancel any pending debounced calls
       if (typeof debouncedCheck.cancel === 'function') {
         debouncedCheck.cancel();
       }
       
-      // Run check immediately on blur
       if (e.target.value && !isNaN(parseInt(e.target.value))) {
         debouncedCheck(e.target.value);
       }
     });
+    
+    console.log('Dynamic threshold checking set up');
+  } else {
+    console.warn('Price input not found, dynamic threshold checking disabled');
   }
 }
 
@@ -973,24 +950,87 @@ async function applyFiltersToActiveTeslaTab(filters) {
     
     const tab = tabs[0];
     
-    // Send a message to the content script to update filters
-    const response = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'updateFilters',
-        filters: filters
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('Error communicating with tab:', chrome.runtime.lastError);
-          resolve({ success: false });
-        } else {
-          resolve(response || { success: false });
+    // Create a promise with timeout for the message
+    return new Promise((resolve) => {
+      // Set a timeout to handle non-responsive content scripts
+      const timeoutId = setTimeout(() => {
+        console.warn('Message response timed out, falling back to URL update');
+        applyFiltersFallback(filters);
+        resolve(false);
+      }, 2000); // 2 second timeout
+      
+      // Try to send message to content script
+      chrome.tabs.sendMessage(
+        tab.id, 
+        {
+          action: 'updateFilters',
+          filters: filters
+        }, 
+        (response) => {
+          clearTimeout(timeoutId); // Clear the timeout
+          
+          if (chrome.runtime.lastError) {
+            console.warn('Error communicating with tab:', chrome.runtime.lastError);
+            // Fall back to URL update method
+            applyFiltersFallback(filters);
+            resolve(false);
+          } else if (response && response.success) {
+            resolve(true);
+          } else {
+            // If response was received but unsuccessful, try fallback
+            applyFiltersFallback(filters);
+            resolve(false);
+          }
         }
-      });
+      );
     });
-    
-    return response.success;
   } catch (error) {
     console.error('Error applying filters to Tesla tab:', error);
+    // Fall back to URL update method
+    applyFiltersFallback(filters);
+    return false;
+  }
+}
+
+/**
+ * Fallback method to apply filters by updating URL
+ * @param {Object} filters - Filters to apply
+ */
+function applyFiltersFallback(filters) {
+  try {
+    console.log('Using fallback method to apply filters');
+    
+    // Build a URL with the parameters
+    const baseUrl = filters.region === 'TR' ? 
+      'https://www.tesla.com/tr_TR' : 
+      'https://www.tesla.com';
+      
+    const url = new URL(`${baseUrl}/inventory/${filters.condition}/${filters.model}`);
+    
+    // Add query parameters
+    url.searchParams.set('arrangeby', 'Price');
+    
+    if (filters.priceMax && filters.priceMax > 0) {
+      url.searchParams.set('price', filters.priceMax);
+    }
+    
+    if (filters.zip) {
+      url.searchParams.set('zip', filters.zip);
+    }
+    
+    if (filters.paymentType) {
+      url.searchParams.set('PaymentType', filters.paymentType);
+    }
+    
+    // Always set range to 25 miles for better results
+    url.searchParams.set('range', '25');
+    
+    // Update current tab instead of opening a new one
+    chrome.tabs.update({ url: url.toString() });
+    
+    return true;
+  } catch (error) {
+    console.error('Error in filter fallback:', error);
     return false;
   }
 }
@@ -1073,6 +1113,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     // Set up collapsible sections
     setupCollapsibles();
+
+    setupDynamicThresholdChecking();
     
     // Load settings
     await loadSettings();
@@ -1103,9 +1145,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (exportCsvBtn) {
       exportCsvBtn.addEventListener('click', exportToCSV);
     }
-    
-    // Set up ZIP code functionality
-    setupZipCodeFunctionality();
     
     // Update button states based on whether we're on a Tesla page
     const isTeslaPage = await checkIfTeslaPage();

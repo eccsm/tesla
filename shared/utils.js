@@ -7,14 +7,29 @@
 import { CONFIG } from './constants.js';
 
 /**
- * Format price according to region settings
- * @param {number} price - Price value
+ * Format price with proper currency symbol and locale
+ * @param {number} price - Price to format
  * @param {string} region - Region code (e.g., 'US', 'TR')
- * @returns {string} Formatted price with currency symbol
+ * @returns {string} Formatted price string
  */
 export function formatPrice(price, region = 'US') {
-  const regionConfig = CONFIG.REGIONS[region] || CONFIG.REGIONS.US;
-  return `${regionConfig.currencySymbol}${price.toLocaleString(regionConfig.numberFormat)}`;
+  // Handle undefined/null prices
+  if (price === undefined || price === null || isNaN(price)) {
+    return region === 'TR' ? '₺0' : '$0';
+  }
+  
+  try {
+    // Use safe locale formatting
+    if (region === 'TR') {
+      return '₺' + price.toLocaleString('tr-TR');
+    } else {
+      return '$' + price.toLocaleString('en-US');
+    }
+  } catch (e) {
+    // Fallback if toLocaleString fails
+    console.warn('Error formatting price, using fallback:', e);
+    return region === 'TR' ? '₺' + price : '$' + price;
+  }
 }
 
 /**
@@ -119,22 +134,38 @@ export function sendMessageToBackground(message) {
 }
 
 /**
- * Debounce a function call
+ * Create a simple debounce function
  * @param {Function} func - Function to debounce
  * @param {number} wait - Wait time in milliseconds
  * @returns {Function} Debounced function
  */
-export function debounce(func, wait = 300) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
+export async function debounce(func, wait) {
+    let timeout;
+    
+    // Return a function that will be the debounced version
+    const debounced = function() {
+      const context = this;
+      const args = arguments;
+      
+      const later = function() {
+        timeout = null;
+        func.apply(context, args);
+      };
+      
       clearTimeout(timeout);
-      func(...args);
+      timeout = setTimeout(later, wait);
     };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
+    
+    // Add a cancel method
+    debounced.cancel = function() {
+      clearTimeout(timeout);
+      timeout = null;
+    };
+    
+    return debounced;
+  }
+  
+  
 
 /**
  * Retry a function with exponential backoff

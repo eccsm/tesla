@@ -23,19 +23,6 @@ class InventoryApiService {
       this.lastExportTime = null;
     }
     
-    /**
-     * Initialize the API service
-     */
-    initialize() {
-      console.log('Tesla Inventory API Service initialized');
-      
-      // Set up headers when extension is installed
-      chrome.runtime.onInstalled.addListener(() => {
-        this.setupApiHeaders();
-      });
-      
-      return this;
-    }
   
   /**
    * Initialize the API service
@@ -139,6 +126,8 @@ class InventoryApiService {
    */
   async fetchInventory(filters = {}) {
     try {
+        console.log("Using browser-based inventory solution to avoid 403 errors...");
+    return this.getInventoryViaBrowser(filters);
       // Set default filters
       const defaultFilters = {
         region: "US",
@@ -739,172 +728,8 @@ class InventoryApiService {
   }
 }
 export const inventoryApiService = new InventoryApiService();
-/**
- * Improved Message Handler Service for Tesla AutoPilot
- * 
- * This version includes fixes for:
- * 1. Back/forward cache errors
- * 2. HTTP2_PROTOCOL_ERROR handling
- * 3. Better communication with content scripts
- */
-
-// Add this error handling wrapper to all tab message functions in message-handler.js
-// Update the existing showInventoryResultsOnTab function:
-
-/**
- * Show inventory results on the active tab with improved error handling
- * @param {Array} vehicles - Vehicle results
- * @param {Object} filters - Search filters
- * @returns {Promise<boolean>} Success status
- */
-async function showInventoryResultsOnTab(vehicles, filters) {
-    try {
-      // Get the active tab
-      const tabs = await new Promise((resolve) => {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          resolve(tabs);
-        });
-      });
-      
-      // Check if we have an active tab
-      if (!tabs || tabs.length === 0) {
-        console.log('No active tab found to show inventory results');
-        return false;
-      }
-      
-      const activeTab = tabs[0];
-      
-      // Check if the active tab is on tesla.com
-      if (!activeTab.url || !activeTab.url.includes('tesla.com')) {
-        console.log('Active tab is not on tesla.com, not showing results');
-        return false;
-      }
-      
-      // Send the results to the content script with error handling
-      try {
-        const response = await new Promise((resolve) => {
-          chrome.tabs.sendMessage(activeTab.id, {
-            action: 'updateInventoryResults',
-            vehicles: vehicles,
-            filters: filters
-          }, (response) => {
-            // Handle error but don't reject the promise
-            if (chrome.runtime.lastError) {
-              console.log('Could not send message to tab:', chrome.runtime.lastError.message);
-              // Continue even if there's an error - just return false
-              resolve(false);
-            } else {
-              resolve(!!response?.success);
-            }
-          });
-        });
-        
-        return response;
-      } catch (err) {
-        // Don't throw the error, just log it and return false
-        console.log('Error sending message to tab:', err);
-        return false;
-      }
-    } catch (error) {
-      console.error('Error showing inventory results on tab:', error);
-      return false;
-    }
-  }
   
   
-  // Add robust error handling to the CHECK_INVENTORY handler
-  // Update the handler to better handle HTTP2_PROTOCOL_ERROR
-  this.registerHandler(ACTION_TYPES.CHECK_INVENTORY, async (message) => {
-    try {
-      // Get monitoring filters
-      const filters = message.filters || {};
-      
-      // Check if this is a silent check (for threshold updates)
-      const isSilent = message.silent === true;
-      
-      // For Tesla API requests that fail with protocol errors, retry with a delay
-      const maxRetries = 2;
-      let retryCount = 0;
-      let result = null;
-      
-      while (retryCount <= maxRetries) {
-        try {
-          // Fetch inventory with filters
-          result = await inventoryApiService.fetchInventory(filters);
-          // Success, exit retry loop
-          break;
-        } catch (fetchError) {
-          // If this is a protocol error, retry
-          if (fetchError.message.includes('HTTP2_PROTOCOL_ERROR') || 
-              fetchError.message.includes('net::ERR_HTTP2_PROTOCOL_ERROR')) {
-            
-            retryCount++;
-            if (retryCount <= maxRetries) {
-              // Exponential backoff - wait longer between retries
-              const delayMs = 1000 * Math.pow(2, retryCount - 1);
-              console.log(`HTTP2 protocol error, retrying in ${delayMs}ms (attempt ${retryCount}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, delayMs));
-              continue;
-            }
-          }
-          // For other errors or if we've exceeded retries, rethrow
-          throw fetchError;
-        }
-      }
-      
-      // If we still don't have results after retries, fall back to browser method
-      if (!result) {
-        console.log("No results after retries, trying browser method");
-        result = await inventoryApiService.getInventoryViaBrowser(filters);
-      }
-      
-      // Save last check time and results
-      await storageService.saveData({
-        lastInventoryCheck: new Date().toISOString(),
-        lastInventoryResults: result.results
-      });
-      
-      // If vehicles found and not in silent mode, show notification
-      if (result.results.length > 0) {
-        if (!isSilent) {
-          this._showNotificationForVehicles(result.results, filters);
-        }
-        
-        // Update active tab with results regardless of silent mode
-        await showInventoryResultsOnTab(result.results, filters);
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Error in checkInventory handler:', error);
-      
-      // If API access failed, try the fallback method
-      if (
-        error.message.includes("403") || 
-        error.message.includes("Failed to fetch") || 
-        error.message.includes("Network error") ||
-        error.message.includes("HTTP2_PROTOCOL_ERROR")
-      ) {
-        try {
-          // Try browser method instead
-          console.log("API error, using browser method");
-          const browserResult = await inventoryApiService.getInventoryViaBrowser(message.filters || {});
-          return browserResult;
-        } catch (browserError) {
-          console.error("Browser method also failed:", browserError);
-          return { 
-            success: false, 
-            fallback: true,
-            error: "Automated inventory checks failed. Try using the 'Open Tesla Inventory' button instead." 
-          };
-        }
-      }
-      
-      return { 
-        success: false, 
-        error: error.message || String(error) 
-      };
-    }
-  });
+  
 
 // Export a singleton instance

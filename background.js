@@ -16,12 +16,24 @@ import { storageService } from './shared/storage.js';
 async function initializeExtension() {
   console.log("Starting Tesla AutoPilot extension initialization...");
   
-  // Initialize services in the correct order
-  inventoryApiService.initialize();
-  messageHandlerService.initialize();
-  inventoryMonitorService.initialize();
-  
-  console.log("Tesla AutoPilot extension fully initialized!");
+  try {
+    // Initialize services in the correct order - storage first, then API, then message handler
+    await storageService.initialize();
+    console.log("Storage service initialized");
+    
+    await inventoryApiService.initialize();
+    console.log("Inventory API service initialized");
+    
+    await messageHandlerService.initialize();
+    console.log("Message handler service initialized");
+    
+    await inventoryMonitorService.initialize();
+    console.log("Inventory monitor service initialized");
+    
+    console.log("Tesla AutoPilot extension fully initialized!");
+  } catch (error) {
+    console.error("Error during service initialization:", error);
+  }
 }
 
 // Set up installation and update handler

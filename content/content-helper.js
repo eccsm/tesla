@@ -96,27 +96,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   
-  // Fill ZIP code dialog
-  if (request.action === "fillZipDialog") {
-    try {
-      zipHelper.detectAndFillZipDialog();
-      sendResponse({ success: true, message: "ZIP dialog fill attempted" });
-    } catch (error) {
-      console.error('Error filling ZIP dialog:', error);
-      sendResponse({ success: false, error: error.message || String(error) });
+  // Handle filter updates when threshold changes
+  if (request.action === "updateFilters" && request.filters) {
+    const success = applyFiltersToPage(request.filters);
+    
+    if (success) {
+      const priceMax = request.filters.priceMax;
+      const formattedPrice = priceMax ? 
+        `$${parseInt(priceMax).toLocaleString()}` : '';
+        
+      showFilterUpdateNotification(`Price threshold updated to ${formattedPrice}`);
     }
+    
+    sendResponse({ success });
     return true;
   }
   
-  // Set ZIP code directly
-  if (request.action === "setZipCode" && request.zipCode) {
-    try {
-      zipHelper.setZipCode(request.zipCode);
-      sendResponse({ success: true, message: "ZIP code set" });
-    } catch (error) {
-      console.error('Error setting ZIP code:', error);
-      sendResponse({ success: false, error: error.message || String(error) });
-    }
+  // Handle inventory results display
+  if (request.action === "updateInventoryResults" && request.vehicles) {
+    updateInventoryResults(request.vehicles, request.filters);
+    sendResponse({ success: true });
     return true;
   }
   
@@ -758,19 +757,40 @@ const formHelper = {
     } else {
       this.createPanel();
     }
-  }
+  },
+
+  /**
+   * Fix validation errors in form fields
+   * @returns {boolean} Success status
+   */
+  fixValidationErrors() {
+    try {
+      // Fix email field if it contains address data
+      const emailField = document.querySelector('#EMAIL, input[name="email"], input[data-id="email-textbox"]');
+      if (emailField && !emailField.value.includes('@')) {
+        console.log('Fixing invalid email field with value:', emailField.value);
+        emailField.value = '';
+        emailField.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      // Fix other potential validation issues
+      const phoneField = document.querySelector('#PHONE_NUMBER, input[name="phoneNumber"], input[data-id="phone-number-textbox"]');
+      if (phoneField && phoneField.value && phoneField.value.length < 3) {
+        console.log('Fixing potentially invalid phone field');
+        phoneField.value = '';
+        phoneField.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      return true;
+    } catch (e) {
+      console.error('Error fixing validation errors:', e);
+      return false;
+    }
+  },
 };
 
-/**
- * Tesla AutoPilot - Fixed Content Helper
- * 
- * This version fixes the "possibleContainers is not defined" error and
- * improves the in-page filtering without opening new tabs.
- */
 
-// First, fix the ReferenceError by adding the missing definition:
-// Add this near line 780 in content-helper.js (before where the error occurs)
-
+// In content-helper.js, around line 779-1033
 // Find possible price range input elements
 function findPriceRangeInput() {
   // Look for range inputs that might control price
@@ -782,100 +802,89 @@ function findPriceRangeInput() {
   return possibleContainers.length > 0 ? possibleContainers[0] : null;
 }
 
-/**
- * Apply filter changes directly to the Tesla page instead of opening a new tab
- * @param {Object} filters - The filter values to apply
- * @returns {boolean} - Whether filters were successfully applied
- */
-function applyFiltersToPage(filters) {
+// In your content script message handler
+if (message.action === 'updateFilters') {
+  console.log('Received updateFilters message with filters:', message.filters);
+  
   try {
-    console.log("Applying filters to current page:", filters);
+    // Apply filters to the page
+    const success = await applyFiltersToPage(message.filters);
     
-    // 1. Update model selection if it exists
-    if (filters.model) {
-      const modelRadio = document.querySelector(`input[type="radio"][value="${filters.model}"]`);
-      if (modelRadio && !modelRadio.checked) {
-        modelRadio.click();
-        console.log(`Clicked model radio for ${filters.model}`);
-      }
-    }
-    
-    // 2. Update payment type if it exists
-    if (filters.paymentType) {
-      const paymentRadio = document.querySelector(`input[type="radio"][value="${filters.paymentType}"]`);
-      if (paymentRadio && !paymentRadio.checked) {
-        paymentRadio.click();
-        console.log(`Clicked payment type radio for ${filters.paymentType}`);
-      }
-    }
-    
-    // 3. Update price slider if it exists
-    if (filters.priceMax) {
-      const priceSlider = findPriceRangeInput();
-      if (priceSlider) {
-        // First check if the slider needs updating
-        const currentValue = parseInt(priceSlider.value, 10);
-        const targetValue = parseInt(filters.priceMax, 10);
-        
-        if (currentValue !== targetValue) {
-          // Update the value
-          priceSlider.value = targetValue;
-          
-          // Dispatch events to ensure Tesla's code recognizes the change
-          priceSlider.dispatchEvent(new Event('input', { bubbles: true }));
-          priceSlider.dispatchEvent(new Event('change', { bubbles: true }));
-          
-          console.log(`Updated price slider to ${targetValue}`);
-          
-          // Update any displayed price labels
-          const priceLabels = document.querySelectorAll('.tds-form-label-text');
-          priceLabels.forEach(label => {
-            if (label.textContent.includes('$')) {
-              const currencySymbol = '$';
-              label.textContent = `Up to ${currencySymbol}${targetValue.toLocaleString()}`;
-            }
-          });
-        }
-      }
-    }
-    
-    // 4. Update trim checkboxes if applicable
-    if (filters.trimLevels && Array.isArray(filters.trimLevels)) {
-      const trimCheckboxes = document.querySelectorAll('input[type="checkbox"][id^="TRIM:"]');
-      if (trimCheckboxes.length > 0) {
-        // First uncheck all trim checkboxes
-        trimCheckboxes.forEach(checkbox => {
-          if (checkbox.checked) {
-            checkbox.click();
-          }
-        });
-        
-        // Then check the ones that match the filters
-        filters.trimLevels.forEach(trim => {
-          const trimCheckbox = document.querySelector(`input[type="checkbox"][id="TRIM:${trim}"]`);
-          if (trimCheckbox && !trimCheckbox.checked) {
-            trimCheckbox.click();
-            console.log(`Clicked trim checkbox for ${trim}`);
-          }
-        });
-      }
-    }
-    
-    // 5. Find and click "Apply Filters" button if it exists
-    const applyButton = document.querySelector('button[data-id="apply-filters-button"]');
-    if (applyButton) {
-      applyButton.click();
-      console.log("Clicked Apply Filters button");
-    }
-    
-    // Success - filters applied
-    return true;
+    // Send back the result
+    sendResponse({ success: success });
   } catch (error) {
-    console.error("Error applying filters to page:", error);
+    console.error('Error applying filters to page:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+  
+  return true; // Keep the message channel open for the async response
+}
+
+// Function to apply filters to the current page
+async function applyFiltersToPage(filters) {
+  try {
+    // First find the price slider
+    const priceInputs = findPriceRangeInputs();
+    
+    if (priceInputs.length === 0) {
+      console.warn('No price range inputs found on the page');
+      return false;
+    }
+    
+    const priceInput = priceInputs[0];
+    
+    // Get current value before changing
+    const currentValue = parseInt(priceInput.value) || 0;
+    const targetValue = parseInt(filters.priceMax) || 0;
+    
+    if (targetValue > 0 && currentValue !== targetValue) {
+      console.log(`Updating price slider from ${currentValue} to ${targetValue}`);
+      
+      // Set value and trigger events
+      priceInput.value = targetValue;
+      priceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      priceInput.dispatchEvent(new Event('change', { bubbles: true }));
+      
+      // Give the page time to update internal state
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    // Find and click the Apply button
+    const buttonClicked = await findAndClickApplyButton();
+    
+    return buttonClicked;
+  } catch (error) {
+    console.error('Error applying filters to page:', error);
     return false;
   }
 }
 
+/**
+ * Update price labels on the page
+ * @param {number} price - The new price value
+ * @param {string} region - Region code (e.g., 'US', 'TR')
+ */
+function updatePriceLabels(price, region = 'US') {
+  try {
+    const currencySymbol = region === 'TR' ? '₺' : '$';
+    const formattedPrice = `${currencySymbol}${parseInt(price).toLocaleString()}`;
+    
+    // Update any price labels
+    const priceLabels = [
+      ...document.querySelectorAll('.tds-form-label-text'),
+      ...document.querySelectorAll('[data-id*="price-label"]'),
+      ...document.querySelectorAll('[class*="price-label"]')
+    ];
+    
+    priceLabels.forEach(label => {
+      if (label.textContent.includes('$') || label.textContent.includes('₺')) {
+        label.textContent = `Up to ${formattedPrice}`;
+      }
+    });
+  } catch (e) {
+    console.error("Error updating price labels:", e);
+  }
+}
 /**
  * Create a floating panel to show when filters have been updated
  * @param {string} message - The message to display
@@ -933,64 +942,29 @@ function showFilterUpdateNotification(message) {
   }
 }
 
-// Add message listener for filter updates from the popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // Handle filter updates when threshold changes
-  if (request.action === "updateFilters" && request.filters) {
-    const success = applyFiltersToPage(request.filters);
-    
-    if (success) {
-      const priceMax = request.filters.priceMax;
-      const formattedPrice = priceMax ? 
-        `$${parseInt(priceMax).toLocaleString()}` : '';
-        
-      showFilterUpdateNotification(`Price threshold updated to ${formattedPrice}`);
-    }
-    
-    sendResponse({ success });
-    return true;
-  }
-  
-  return false;
-});
-
-// Fixed: Remove the reference to possibleContainers that's causing the error
-// Keep all of the existing code, but remove just the erroneous reference
-// around line 785:
-
-// Replace this problematic section:
-// possibleContainers.forEach(container => {
-//   try {
-//     const originalBoxShadow = container.style.boxShadow;
-//     // ... rest of the code
-//   } catch (e) {
-//     // Ignore styling errors
-//   }
-// });
-
-// With this fixed version:
+// Fix for the possibleContainers undefined reference
 try {
-  const containers = findPriceRangeInput();
-  if (containers) {
-    const originalBoxShadow = containers.style.boxShadow;
-    const originalPosition = containers.style.position;
-    const originalZIndex = containers.style.zIndex;
+  const priceInput = findPriceRangeInput();
+  if (priceInput) {
+    const originalBoxShadow = priceInput.style.boxShadow;
+    const originalPosition = priceInput.style.position;
+    const originalZIndex = priceInput.style.zIndex;
     
     // Add a pulse effect
-    containers.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
-    containers.style.position = originalPosition === 'static' ? 'relative' : originalPosition;
-    containers.style.zIndex = '9000';
+    priceInput.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
+    priceInput.style.position = originalPosition === 'static' ? 'relative' : originalPosition;
+    priceInput.style.zIndex = '9000';
     
     // Add transition for smooth effect
-    containers.style.transition = 'box-shadow 0.5s ease';
+    priceInput.style.transition = 'box-shadow 0.5s ease';
     
     // Pulse effect
     let pulseCount = 0;
     const pulseInterval = setInterval(() => {
       if (pulseCount % 2 === 0) {
-        containers.style.boxShadow = '0 0 0 5px rgba(59, 130, 246, 0.3)';
+        priceInput.style.boxShadow = '0 0 0 5px rgba(59, 130, 246, 0.3)';
       } else {
-        containers.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
+        priceInput.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
       }
       
       pulseCount++;
@@ -999,84 +973,35 @@ try {
         
         // Reset styles after a while
         setTimeout(() => {
-          containers.style.boxShadow = originalBoxShadow;
-          containers.style.zIndex = originalZIndex;
+          priceInput.style.boxShadow = originalBoxShadow;
+          priceInput.style.zIndex = originalZIndex;
         }, 5000);
       }
     }, 500);
   }
 } catch (e) {
   // Ignore styling errors
-  console.error("Error styling containers:", e);
+  console.error("Error styling price input:", e);
 }
+
+// Look for payment form sections based on text content
+const possiblePaymentSections = [];
+['Payment', 'Credit Card', 'Billing', 'Payment Method', 'Account Details'].forEach(text => {
+  const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, legend, .tds-text--h4'));
   
-  // Also look for payment form sections based on text content
-  const possiblePaymentSections = [];
-  ['Payment', 'Credit Card', 'Billing', 'Payment Method', 'Account Details'].forEach(text => {
-    const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, legend, .tds-text--h4'));
-    
-    elements.forEach(el => {
-      if (el.textContent.includes(text)) {
-        // Get parent section
-        let section = el;
-        for (let i = 0; i < 3; i++) {
-          if (section.parentElement) {
-            section = section.parentElement;
-          }
+  elements.forEach(el => {
+    if (el.textContent.includes(text)) {
+      // Get parent section
+      let section = el;
+      for (let i = 0; i < 3; i++) {
+        if (section.parentElement) {
+          section = section.parentElement;
         }
-        possiblePaymentSections.push(section);
       }
-    });
-  });
-  
-  // Add pulse effect to containers
-  possibleContainers.forEach(container => {
-    try {
-      const originalBoxShadow = container.style.boxShadow;
-      const originalPosition = container.style.position;
-      const originalZIndex = container.style.zIndex;
-      
-      // Add a pulse effect
-      container.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
-      container.style.position = originalPosition === 'static' ? 'relative' : originalPosition;
-      container.style.zIndex = '9000';
-      
-      // Add transition for smooth effect
-      container.style.transition = 'box-shadow 0.5s ease';
-      
-      // Pulse effect
-      let pulseCount = 0;
-      const pulseInterval = setInterval(() => {
-        if (pulseCount % 2 === 0) {
-          container.style.boxShadow = '0 0 0 5px rgba(59, 130, 246, 0.3)';
-        } else {
-          container.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.6)';
-        }
-        
-        pulseCount++;
-        if (pulseCount >= 6) {
-          clearInterval(pulseInterval);
-          
-          // Reset styles after a while
-          setTimeout(() => {
-            container.style.boxShadow = originalBoxShadow;
-            container.style.zIndex = originalZIndex;
-          }, 5000);
-        }
-      }, 500);
-    } catch (e) {
-      // Ignore styling errors
+      possiblePaymentSections.push(section);
     }
   });
-  
-  /**
- * Tesla AutoPilot Content Helper - Dynamic Inventory Updates
- *
- * Add this code to the content-helper.js file to handle inventory updates
- * when the threshold price changes.
- */
-
-// Add this function to your content-helper.js file
+});
 
 /**
  * Update UI with inventory check results
@@ -1300,14 +1225,14 @@ function updateInventoryResults(vehicles, filters) {
   } catch (error) {
     console.error('Error updating inventory results:', error);
   }
+  /**
+ * Check if an element contains text (for jQuery-like selectors)
+ * @param {string} text - Text to search for
+ * @returns {Function} Selector function
+ */
+Element.prototype.contains = function(text) {
+  return Array.from(document.querySelectorAll(this)).filter(el => 
+    el.textContent.includes(text)
+  );
+};
 }
-
-// Add a listener for inventory results
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "updateInventoryResults" && request.vehicles) {
-    updateInventoryResults(request.vehicles, request.filters);
-    sendResponse({ success: true });
-    return true;
-  }
-  return false;
-});

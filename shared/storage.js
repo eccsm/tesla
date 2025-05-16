@@ -23,6 +23,28 @@ class StorageService {
    */
   RETRY_DELAY = 200;
 
+
+/**
+ * Initialize the storage service
+ * @returns {Promise<this>} The storage service instance
+ */
+async initialize() {
+    try {
+      // Check if storage is accessible
+      await this.getData('lastAccess');
+      
+      // Set last access time
+      await this.saveData({
+        lastAccess: new Date().toISOString()
+      });
+      
+      console.log('Storage service initialized');
+      return this;
+    } catch (error) {
+      console.error('Error initializing storage service:', error);
+      throw error;
+    }
+  }
   /**
    * Save data to Chrome storage
    * @param {Object} data - Data to save
@@ -243,6 +265,7 @@ class StorageService {
     }
   }
 }
+
 
 // Export a singleton instance
 export const storageService = new StorageService();
