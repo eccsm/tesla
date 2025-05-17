@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Monitor Options</title>
+    <link rel="stylesheet" href="styles/main.css"> 
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            min-width: 400px;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .settings-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fff;
+        }
+        .settings-section h4 {
+            margin-top: 0;
+            color: #555;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="email"],
+        .form-group input[type="tel"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .tds-btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .tds-btn--primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .tds-btn--secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .notification {
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 4px;
+            display: none; 
+        }
+        .notification.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .notification.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tesla Inventory Monitor Options</h1>
+
+        <!-- Account Details Section -->
+        <div class="settings-section" id="accountDetailsSection">
+            <h4>Account Details for Order Form Auto-fill</h4>
+            <div class="form-group">
+                <label for="firstName">First Name:</label>
+                <input type="text" id="firstName" name="firstName">
+            </div>
+            <div class="form-group">
+                <label for="lastName">Last Name:</label>
+                <input type="text" id="lastName" name="lastName">
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email">
+            </div>
+            <div class="form-group">
+                <label for="phone">Phone Number (e.g., 5551234567):</label>
+                <input type="tel" id="phone" name="phone">
+            </div>
+            <div class="form-group">
+                <label for="countryCode">Country Code (e.g., +1, +44, +90):</label>
+                <input type="text" id="countryCode" name="countryCode" placeholder="+1">
+            </div>
+            
+            <h4>Shipping Address</h4>
+            <div class="form-group">
+                <label for="shippingAddress">Address:</label>
+                <input type="text" id="shippingAddress" name="shippingAddress">
+            </div>
+            <div class="form-group">
+                <label for="shippingApt">Apartment, Suite, etc (optional):</label>
+                <input type="text" id="shippingApt" name="shippingApt">
+            </div>
+            <div class="form-group">
+                <label for="shippingCity">City:</label>
+                <input type="text" id="shippingCity" name="shippingCity">
+            </div>
+            <div class="form-group">
+                <label for="shippingState">State:</label>
+                <input type="text" id="shippingState" name="shippingState">
+            </div>
+            <div class="form-group">
+                <label for="shippingZip">ZIP Code:</label>
+                <input type="text" id="shippingZip" name="shippingZip">
+            </div>
+            
+            <h4>Payment Information</h4>
+            <div class="form-group">
+                <label for="cardNumber">Card Number:</label>
+                <input type="text" id="cardNumber" name="cardNumber" placeholder="XXXX XXXX XXXX XXXX">
+            </div>
+            <div class="form-group">
+                <label for="expirationMonth">Expiration Month:</label>
+                <select id="expirationMonth" name="expirationMonth">
+                    <option value="">Select Month</option>
+                    <option value="01">01 - January</option>
+                    <option value="02">02 - February</option>
+                    <option value="03">03 - March</option>
+                    <option value="04">04 - April</option>
+                    <option value="05">05 - May</option>
+                    <option value="06">06 - June</option>
+                    <option value="07">07 - July</option>
+                    <option value="08">08 - August</option>
+                    <option value="09">09 - September</option>
+                    <option value="10">10 - October</option>
+                    <option value="11">11 - November</option>
+                    <option value="12">12 - December</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="expirationYear">Expiration Year:</label>
+                <select id="expirationYear" name="expirationYear">
+                    <option value="">Select Year</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                    <option value="2028">2028</option>
+                    <option value="2029">2029</option>
+                    <option value="2030">2030</option>
+                    <option value="2031">2031</option>
+                    <option value="2032">2032</option>
+                    <option value="2033">2033</option>
+                    <option value="2034">2034</option>
+                    <option value="2035">2035</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="securityCode">Security Code:</label>
+                <input type="password" id="securityCode" name="securityCode" maxlength="4" placeholder="CVV">
+            </div>
+            <div class="form-group">
+                <label for="billingZip">Billing ZIP Code:</label>
+                <input type="text" id="billingZip" name="billingZip">
+            </div>
+            
+            <button id="saveAccountDetailsButton" class="tds-btn tds-btn--primary">Save Account Details</button>
+            <div id="accountDetailsNotification" class="notification"></div>
+        </div>
+
+        <!-- Extension Settings Section -->
+        <div class="settings-section" id="extensionSettingsSection">
+            <h4>Extension Settings</h4>
+            <form id="optionsForm">
+                <div class="form-group">
+                    <label for="region">Region</label>
+                    <select id="region">
+                        <option value="US">United States</option>
+                        <option value="TR">Turkey</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="model">Model</label>
+                    <input type="text" id="model" placeholder="e.g. Model Y">
+                </div>
+                <div class="form-group">
+                    <label for="condition">Condition</label>
+                    <select id="condition">
+                        <option value="new">New</option>
+                        <option value="used">Used</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="priceMin">Price Min</label>
+                    <input type="number" id="priceMin" placeholder="Minimum price">
+                </div>
+                <div class="form-group">
+                    <label for="priceMax">Price Max</label>
+                    <input type="number" id="priceMax" placeholder="Maximum price">
+                </div>
+                <div class="form-group">
+                    <label for="zip">ZIP Code</label>
+                    <input type="text" id="zip" placeholder="ZIP Code">
+                </div>
+                <div class="form-group">
+                    <label for="range">Range</label>
+                    <input type="number" id="range" placeholder="Range (mi/km)">
+                </div>
+                <button type="submit" class="tds-btn tds-btn--primary">Save</button>
+                <div id="notification" class="notification"></div>
+            </form>
+        </div>
+
+    </div>
+
+    <script src="options.js"></script>
+</body>
+</html>

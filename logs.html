@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tesla Monitor Logs</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      margin-top: 0;
+      margin-bottom: 20px;
+      font-size: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    button {
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      background-color: #f5f5f5;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    button.primary {
+      background-color: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+    
+    button:hover {
+      opacity: 0.9;
+    }
+    
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    
+    .filters label {
+      font-size: 14px;
+      margin-right: 5px;
+    }
+    
+    .filters select, .filters input {
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+    
+    .logs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    
+    .logs-table th, .logs-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .logs-table th {
+      background-color: #f9fafb;
+      font-weight: 600;
+    }
+    
+    .logs-table tr:hover {
+      background-color: #f9fafb;
+    }
+    
+    .details-cell {
+      max-width: 450px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .timestamp {
+      white-space: nowrap;
+    }
+    
+    .log-type {
+      width: 150px;
+    }
+    
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .pill.monitoring {
+      background-color: #dcfce7;
+      color: #166534;
+    }
+    
+    .pill.inventory {
+      background-color: #e0f2fe;
+      color: #0369a1;
+    }
+    
+    .pill.error {
+      background-color: #fee2e2;
+      color: #b91c1c;
+    }
+    
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: #6b7280;
+      background-color: #f9fafb;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.4);
+    }
+    
+    .modal-content {
+      background-color: #fefefe;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      width: 80%;
+      max-width: 800px;
+      max-height: 70vh;
+      overflow: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    .modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+    
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    
+    .close:hover,
+    .close:focus {
+      color: black;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    
+    pre {
+      background-color: #f9fafb;
+      padding: 15px;
+      border-radius: 4px;
+      overflow: auto;
+      font-family: monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #1f2937;
+        color: #f9fafb;
+      }
+      
+      button {
+        background-color: #374151;
+        border-color: #4b5563;
+        color: #f3f4f6;
+      }
+      
+      .logs-table th {
+        background-color: #374151;
+      }
+      
+      .logs-table tr:hover {
+        background-color: #374151;
+      }
+      
+      .logs-table td, .logs-table th {
+        border-color: #4b5563;
+      }
+      
+      .empty-state {
+        background-color: #374151;
+        color: #9ca3af;
+      }
+      
+      pre {
+        background-color: #374151;
+        color: #f3f4f6;
+      }
+      
+      .modal-content {
+        background-color: #1f2937;
+        border-color: #4b5563;
+      }
+      
+      .close {
+        color: #f3f4f6;
+      }
+      
+      .close:hover,
+      .close:focus {
+        color: white;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>
+    Tesla Inventory Monitor Logs
+    <button id="back-button" class="secondary">Back to Monitor</button>
+  </h1>
+  
+  <div class="actions">
+    <button id="refresh-btn" class="primary">Refresh Logs</button>
+    <button id="export-btn">Export Logs</button>
+    <button id="clear-recent-btn">Clear Recent</button>
+    <button id="clear-all-btn">Clear All</button>
+  </div>
+  
+  <div class="filters">
+    <div>
+      <label for="filter-type">Type:</label>
+      <select id="filter-type">
+        <option value="">All Types</option>
+        <option value="monitoring">Monitoring</option>
+        <option value="inventory">Inventory</option>
+        <option value="error">Errors</option>
+      </select>
+    </div>
+    <div>
+      <label for="filter-date">From:</label>
+      <input type="date" id="filter-date">
+    </div>
+    <div>
+      <label for="filter-limit">Limit:</label>
+      <select id="filter-limit">
+        <option value="100">100 logs</option>
+        <option value="200">200 logs</option>
+        <option value="500">500 logs</option>
+        <option value="1000">All logs</option>
+      </select>
+    </div>
+    <button id="apply-filters-btn">Apply Filters</button>
+  </div>
+  
+  <table class="logs-table">
+    <thead>
+      <tr>
+        <th class="timestamp">Timestamp</th>
+        <th class="log-type">Type</th>
+        <th>Details</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="logs-container">
+      <!-- Logs will be added here via JavaScript -->
+    </tbody>
+  </table>
+  
+  <div id="empty-state" class="empty-state" style="display: none;">
+    <p>No monitoring logs found</p>
+    <p>Logs will appear here as you use the inventory monitor</p>
+  </div>
+  
+  <!-- Log Details Modal -->
+  <div id="log-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Log Details</h2>
+        <span class="close">&times;</span>
+      </div>
+      <pre id="log-details"></pre>
+    </div>
+  </div>
+  
+  <script src="logs.js"></script>
+</body>
+</html>

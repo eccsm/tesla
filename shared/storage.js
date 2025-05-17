@@ -1,271 +1,179 @@
 /**
- * Tesla AutoPilot Extension - Storage Service
- * 
- * A robust storage utility that provides:
- * - Promise-based API for Chrome storage operations
- * - Error handling and automatic retries
- * - Support for both sync and local storage
- * - Default values and validation
+ * Tesla Inventory Monitor - Storage Service
  */
 
 import { STORAGE_KEYS } from './constants.js';
 
 class StorageService {
-  /**
-   * Maximum number of retries for storage operations
-   * @type {number}
-   */
-  MAX_RETRIES = 3;
-  
-  /**
-   * Delay between retries in milliseconds
-   * @type {number}
-   */
-  RETRY_DELAY = 200;
-
-
-/**
- * Initialize the storage service
- * @returns {Promise<this>} The storage service instance
- */
-async initialize() {
-    try {
-      // Check if storage is accessible
-      await this.getData('lastAccess');
-      
-      // Set last access time
-      await this.saveData({
-        lastAccess: new Date().toISOString()
-      });
-      
-      console.log('Storage service initialized');
-      return this;
-    } catch (error) {
-      console.error('Error initializing storage service:', error);
-      throw error;
+    constructor() {
+        this.storage = chrome.storage.local;
     }
-  }
-  /**
-   * Save data to Chrome storage
-   * @param {Object} data - Data to save
-   * @param {boolean} [useLocal=false] - Whether to use local storage instead of sync
-   * @param {boolean} [saveToSecondary=true] - Whether to save to secondary storage as backup
-   * @returns {Promise<void>}
-   */
-  async saveData(data, useLocal = false, saveToSecondary = true) {
-    return this._storageOperation(async () => {
-      // Determine primary storage
-      const primaryStorage = useLocal ? chrome.storage.local : chrome.storage.sync;
 
-      // Save to primary storage
-      await new Promise((resolve, reject) => {
-        primaryStorage.set(data, () => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(`Storage error: ${chrome.runtime.lastError.message}`));
-          } else {
-            resolve();
-          }
-        });
-      });
+    /**
+     * Initialize storage service
+     */
+    async initialize() {
+        console.log('Storage service initializing...');
+        return this;
+    }
 
-      // Save to secondary storage as backup if requested
-      if (saveToSecondary) {
-        const secondaryStorage = useLocal ? chrome.storage.sync : chrome.storage.local;
+    /**
+     * Get data from storage
+     * @param {string} key - Storage key
+     * @returns {Promise<any>} Stored data
+     */
+    async getData(key) {
         try {
-          await new Promise((resolve, reject) => {
-            secondaryStorage.set(data, () => {
-              if (chrome.runtime.lastError) {
-                // Just log, don't reject - secondary storage is just backup
-                console.warn(`Secondary storage warning: ${chrome.runtime.lastError.message}`);
-              }
-              resolve(); // Always resolve secondary storage
-            });
-          });
-        } catch (e) {
-          // Log but don't throw for secondary storage errors
-          console.warn('Error in secondary storage:', e);
+            const result = await this.storage.get(key);
+            return result[key];
+        } catch (error) {
+            console.error('Error getting data from storage:', error);
+            throw error;
         }
-      }
+    }
 
-      // Dispatch a custom event to notify about storage changes
-      this._dispatchStorageEvent(data);
-    });
-  }
+    /**
+     * Save data to storage
+     * @param {Object} data - Data to save
+     * @returns {Promise<void>}
+     */
+    async saveData(data) {
+        try {
+            await this.storage.set(data);
+        } catch (error) {
+            console.error('Error saving data to storage:', error);
+            throw error;
+        }
+    }
 
-  /**
-   * Get data from Chrome storage
-   * @param {string|Array|Object|null} keys - Keys to get (null for all)
-   * @param {boolean} [useLocal=false] - Whether to use local storage
-   * @param {boolean} [fallbackToSecondary=true] - Whether to fallback to secondary storage
-   * @returns {Promise<Object>}
-   */
-  async getData(keys = null, useLocal = false, fallbackToSecondary = true) {
-    return this._storageOperation(async () => {
-      // Determine primary storage
-      const primaryStorage = useLocal ? chrome.storage.local : chrome.storage.sync;
-      
-      try {
-        // Attempt to get from primary storage
-        const data = await new Promise((resolve, reject) => {
-          primaryStorage.get(keys, (result) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(`Storage error: ${chrome.runtime.lastError.message}`));
-            } else {
-              resolve(result);
-            }
-          });
-        });
+    /**
+     * Remove data from storage
+     * @param {string|Array<string>} keys - Keys to remove
+     * @returns {Promise<void>}
+     */
+    async removeData(keys) {
+        try {
+            await this.storage.remove(keys);
+        } catch (error) {
+            console.error('Error removing data from storage:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Clear all data from storage
+     * @returns {Promise<void>}
+     */
+    async clearData() {
+        try {
+            await this.storage.clear();
+        } catch (error) {
+            console.error('Error clearing storage:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all data from storage
+     * @returns {Promise<Object>} All stored data
+     */
+    async getAllData() {
+        try {
+            return await this.storage.get(null);
+        } catch (error) {
+            console.error('Error getting all data from storage:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Save form data
+     * @param {Object} formData - Form data to save
+     * @returns {Promise<void>}
+     */
+    async saveFormData(formData) {
+        await this.saveData({ [STORAGE_KEYS.FORM_DATA]: formData });
+    }
+
+    /**
+     * Get form data
+     * @returns {Promise<Object>} Form data
+     */
+    async getFormData() {
+        return await this.getData(STORAGE_KEYS.FORM_DATA) || {};
+    }
+
+    /**
+     * Save last search results
+     * @param {Object} results - Search results to save
+     * @returns {Promise<void>}
+     */
+    async saveLastSearch(results) {
+        await this.saveData({ [STORAGE_KEYS.LAST_SEARCH]: results });
+    }
+
+    /**
+     * Get last search results
+     * @returns {Promise<Object>} Last search results
+     */
+    async getLastSearch() {
+        return await this.getData(STORAGE_KEYS.LAST_SEARCH) || null;
+    }
+
+    /**
+     * Save settings
+     * @param {Object} settings - Settings to save
+     * @returns {Promise<void>}
+     */
+    async saveSettings(settings) {
+        await this.saveData({ [STORAGE_KEYS.SETTINGS]: settings });
+    }
+
+    /**
+     * Get settings
+     * @returns {Promise<Object>} Settings
+     */
+    async getSettings() {
+        return await this.getData(STORAGE_KEYS.SETTINGS) || {};
+    }
+
+    /**
+     * Add vehicle to watch list
+     * @param {Object} vehicle - Vehicle to add
+     * @returns {Promise<void>}
+     */
+    async addToWatchList(vehicle) {
+        const watchList = await this.getData(STORAGE_KEYS.WATCH_LIST) || [];
+        const exists = watchList.some(v => v.vin === vehicle.vin);
         
-        return data;
-      } catch (primaryError) {
-        // If primary storage fails and fallback is enabled, try secondary storage
-        if (fallbackToSecondary) {
-          console.warn('Primary storage error, trying secondary:', primaryError);
-          const secondaryStorage = useLocal ? chrome.storage.sync : chrome.storage.local;
-          
-          try {
-            return await new Promise((resolve, reject) => {
-              secondaryStorage.get(keys, (result) => {
-                if (chrome.runtime.lastError) {
-                  reject(new Error(`Secondary storage error: ${chrome.runtime.lastError.message}`));
-                } else {
-                  resolve(result);
-                }
-              });
+        if (!exists) {
+            watchList.push({
+                ...vehicle,
+                addedAt: new Date().toISOString()
             });
-          } catch (secondaryError) {
-            console.error('Both storage methods failed:', secondaryError);
-            throw primaryError; // Throw original error
-          }
-        } else {
-          throw primaryError;
+            await this.saveData({ [STORAGE_KEYS.WATCH_LIST]: watchList });
         }
-      }
-    });
-  }
-
-  /**
-   * Clear all data from storage
-   * @param {boolean} [useLocal=false] - Whether to clear local storage instead of sync
-   * @param {boolean} [clearBoth=true] - Whether to clear both sync and local storage
-   * @returns {Promise<void>}
-   */
-  async clearStorage(useLocal = false, clearBoth = true) {
-    const clearPromises = [];
-    
-    if (useLocal || clearBoth) {
-      clearPromises.push(new Promise((resolve, reject) => {
-        chrome.storage.local.clear(() => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(`Error clearing local storage: ${chrome.runtime.lastError.message}`));
-          } else {
-            resolve();
-          }
-        });
-      }));
     }
-    
-    if (!useLocal || clearBoth) {
-      clearPromises.push(new Promise((resolve, reject) => {
-        chrome.storage.sync.clear(() => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(`Error clearing sync storage: ${chrome.runtime.lastError.message}`));
-          } else {
-            resolve();
-          }
-        });
-      }));
+
+    /**
+     * Remove vehicle from watch list
+     * @param {string} vin - Vehicle VIN
+     * @returns {Promise<void>}
+     */
+    async removeFromWatchList(vin) {
+        const watchList = await this.getData(STORAGE_KEYS.WATCH_LIST) || [];
+        const filtered = watchList.filter(v => v.vin !== vin);
+        await this.saveData({ [STORAGE_KEYS.WATCH_LIST]: filtered });
     }
-    
-    return Promise.all(clearPromises);
-  }
 
-  /**
-   * Get current region from storage with fallback to default
-   * @returns {Promise<string>} The region code (e.g. 'US', 'TR')
-   */
-  async getRegion() {
-    const { region } = await this.getData(STORAGE_KEYS.REGION);
-    return region || 'US';
-  }
-
-  /**
-   * Get current model from storage with fallback to default
-   * @returns {Promise<string>} The model code (e.g. 'my', 'm3')
-   */
-  async getModel() {
-    const { model } = await this.getData(STORAGE_KEYS.MODEL);
-    return model || 'my';
-  }
-
-  /**
-   * Set current region
-   * @param {string} region - The region code
-   * @returns {Promise<void>}
-   */
-  async setRegion(region) {
-    await this.saveData({ [STORAGE_KEYS.REGION]: region });
-  }
-
-  /**
-   * Get all user settings
-   * @returns {Promise<Object>} User settings
-   */
-  async getAllSettings() {
-    return this.getData(null);
-  }
-
-  /**
-   * Wrapper for storage operations with retry logic
-   * @param {Function} operation - Storage operation function
-   * @returns {Promise<any>}
-   * @private
-   */
-  async _storageOperation(operation) {
-    let lastError;
-    
-    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
-      try {
-        return await operation();
-      } catch (error) {
-        console.warn(`Storage operation failed (attempt ${attempt + 1}/${this.MAX_RETRIES}):`, error);
-        lastError = error;
-        
-        // Wait before retrying
-        if (attempt < this.MAX_RETRIES - 1) {
-          await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
-        }
-      }
+    /**
+     * Get watch list
+     * @returns {Promise<Array>} Watch list
+     */
+    async getWatchList() {
+        return await this.getData(STORAGE_KEYS.WATCH_LIST) || [];
     }
-    
-    throw lastError;
-  }
-
-  /**
-   * Dispatch a custom event for storage changes
-   * @param {Object} data - Changed data
-   * @private
-   */
-  _dispatchStorageEvent(data) {
-    try {
-      // Create a custom event with the changed data
-      const event = new CustomEvent('storage-changed', { 
-        detail: { changes: data, timestamp: Date.now() }
-      });
-      
-      // Dispatch the event - this can be listened to by content scripts via window
-      // or by background service workers with self.addEventListener
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(event);
-      } else if (typeof self !== 'undefined') {
-        self.dispatchEvent(event);
-      }
-    } catch (e) {
-      console.warn('Error dispatching storage event:', e);
-    }
-  }
 }
 
-
-// Export a singleton instance
+// Export singleton instance
 export const storageService = new StorageService();
